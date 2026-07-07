@@ -1,13 +1,7 @@
-"""Demo for real-object observation construction from a local video.
-
-The demo first tries ``real_detector``. If no local detector dependency/weights
-are available, it prints the error and falls back to ``mock`` so the observation
-and R_sd pipeline can still be exercised end to end.
-"""
+"""Demo for YOLO-based real-object observation construction from a local video."""
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -18,47 +12,6 @@ PROJECT_ROOT = ensure_project_environment()
 SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
-
-import cv2  # noqa: E402
-import numpy as np  # noqa: E402
-
-
-def create_fallback_video(video_path: Path, num_frames: int = 20) -> None:
-    """Create a tiny local video when no user video is available."""
-
-    video_path.parent.mkdir(parents=True, exist_ok=True)
-    writer = cv2.VideoWriter(
-        str(video_path),
-        cv2.VideoWriter_fourcc(*"mp4v"),
-        10.0,
-        (320, 180),
-    )
-    if not writer.isOpened():
-        raise RuntimeError(f"Could not create fallback video: {video_path}")
-    try:
-        for index in range(num_frames):
-            frame = np.full((180, 320, 3), 245, dtype=np.uint8)
-            cv2.rectangle(frame, (170, 70), (285, 145), (120, 120, 120), -1)
-            cv2.circle(frame, (45 + index * 2, 130), 13, (60, 110, 235), -1)
-            writer.write(frame)
-    finally:
-        writer.release()
-
-
-def ensure_demo_video() -> Path:
-    """Return data/videos/test_real.mp4, copying or creating it if needed."""
-
-    target = PROJECT_ROOT / "data" / "videos" / "test_real.mp4"
-    if target.exists():
-        return target
-
-    source = PROJECT_ROOT / "data" / "real_videos" / "real_1.mp4"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    if source.exists():
-        shutil.copyfile(source, target)
-    else:
-        create_fallback_video(target)
-    return target
 
 
 def run_command(command: list[str], check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -75,13 +28,24 @@ def run_command(command: list[str], check: bool = True) -> subprocess.CompletedP
 
 
 def main() -> None:
-    """Run real-object observation construction, with mock fallback if needed."""
+    """Run YOLO real-object observation construction and R_sd scoring."""
 
-    video_path = ensure_demo_video()
-    observation_dir = PROJECT_ROOT / "outputs" / "real_observations"
-    output_csv = PROJECT_ROOT / "outputs" / "results" / "real_object_video_rsd_results.csv"
+    video_path = PROJECT_ROOT / "data" / "videos" / "test_real.mp4"
+    model_path = PROJECT_ROOT / "checkpoints" / "yolov8n.pt"
+    if not video_path.exists():
+        raise FileNotFoundError(
+            f"Demo video is missing: {video_path}. Put a video at this path first."
+        )
+    if not model_path.exists():
+        raise FileNotFoundError(
+            f"YOLO weights are missing: {model_path}. "
+            "Place yolov8n.pt in checkpoints/yolov8n.pt first."
+        )
+
+    observation_dir = PROJECT_ROOT / "outputs" / "real_observations" / "real_detector_demo"
+    output_csv = PROJECT_ROOT / "outputs" / "results" / "real_detector_rsd_results.csv"
     output_png = (
-        PROJECT_ROOT / "outputs" / "visualizations" / "real_object_video_rsd_scores.png"
+        PROJECT_ROOT / "outputs" / "visualizations" / "real_detector_rsd_scores.png"
     )
 
     build_script = PROJECT_ROOT / "scripts" / "build_real_object_observations_from_video.py"
@@ -102,20 +66,19 @@ def main() -> None:
         "4",
         "--confidence_threshold",
         "0.3",
+        "--object_provider",
+        "real_detector",
+        "--model_path",
+        str(model_path),
+        "--default_depth",
+        "5.0",
+        "--device",
+        "cpu",
+        "--keep_unknown_scale_prior",
     ]
 
-    result = run_command([*build_base, "--object_provider", "real_detector"], check=False)
-    if result.returncode != 0:
-        print("\nreal_detector is not available in this environment.")
-        print("Reason:")
-        print(result.stderr.strip() or result.stdout.strip())
-        print("\nFalling back to --object_provider mock for pipeline validation.")
-        fallback = run_command(
-            [*build_base, "--object_provider", "mock", "--mock_mode", "reasonable"]
-        )
-        print(fallback.stdout.strip())
-    else:
-        print(result.stdout.strip())
+    result = run_command(build_base)
+    print(result.stdout.strip())
 
     rsd_result = run_command(
         [

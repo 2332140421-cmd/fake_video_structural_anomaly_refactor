@@ -24,7 +24,9 @@ __all__ = [
     "ResidualReport",
     "ResidualValues",
     "ResidualWeights",
+    "ResolvedScalePrior",
     "ScalePrior",
+    "ScalePriorResolver",
     "SegmentationProvider",
     "TrackerProvider",
     "aggregate_map_by_mask",
@@ -43,11 +45,13 @@ __all__ = [
     "draw_object_summary",
     "draw_pairwise_residual_graph",
     "draw_residual_heatmap_from_masks",
+    "default_scale_prior_resolver",
     "extract_frames",
     "fuse_residuals",
     "load_clip_observation",
     "load_clip_residual_result",
     "load_frame_observation",
+    "load_scale_prior_resolver",
     "normalize_residuals",
     "pairwise_scale_depth_residuals",
     "residual_values_to_dict",
@@ -100,6 +104,16 @@ def __getattr__(name: str) -> object:
         from . import scale_depth
 
         return getattr(scale_depth, name)
+
+    if name in {
+        "ResolvedScalePrior",
+        "ScalePriorResolver",
+        "default_scale_prior_resolver",
+        "load_scale_prior_resolver",
+    }:
+        from . import scale_prior
+
+        return getattr(scale_prior, name)
 
     if name in {
         "ClipObservation",
@@ -209,6 +223,3 @@ def __getattr__(name: str) -> object:
         return getattr(residual_fusion, name)
 
     raise AttributeError(f"module 'semantic3d' has no attribute {name!r}")
-    "RealObjectProvider",
-    "get_object_provider",
-    "normalize_label",

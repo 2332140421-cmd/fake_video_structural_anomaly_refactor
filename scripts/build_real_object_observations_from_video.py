@@ -30,6 +30,7 @@ from semantic3d.build_observations import (  # noqa: E402
     build_clip_observation,
     build_frame_observation,
 )
+from semantic3d.depth_provider import MockDepthProvider, RealDepthProvider  # noqa: E402
 from semantic3d.io import save_clip_observation  # noqa: E402
 from semantic3d.provider_registry import get_object_provider  # noqa: E402
 from semantic3d.video_preprocess import build_clips, extract_frames  # noqa: E402
@@ -66,19 +67,45 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--default_depth",
         type=float,
-        default=None,
+        default=5.0,
         help="Optional fixed temporary depth for all detected objects.",
     )
     parser.add_argument(
         "--model_path",
-        default=None,
+        default=str(PROJECT_ROOT / "checkpoints" / "yolov8n.pt"),
         help="Local real detector weights path. No model is downloaded.",
+    )
+    parser.add_argument(
+        "--device",
+        default="cpu",
+        help="Device passed to the real detector, e.g. cpu or cuda:0.",
+    )
+    parser.add_argument(
+        "--keep_unknown_scale_prior",
+        action="store_true",
+        help="Keep detections whose labels do not have scale priors.",
     )
     parser.add_argument(
         "--mock_mode",
         choices=["reasonable", "anomaly"],
         default="reasonable",
         help="Mock mode used only when --object_provider mock.",
+    )
+    parser.add_argument(
+        "--depth_provider",
+        choices=["mock_depth", "real_depth", "none"],
+        default="none",
+        help="Depth provider used to update object depths.",
+    )
+    parser.add_argument(
+        "--save_depth_maps",
+        action="store_true",
+        help="Save predicted depth maps as .npy files.",
+    )
+    parser.add_argument(
+        "--depth_output_dir",
+        default=str(PROJECT_ROOT / "outputs" / "depth_maps"),
+        help="Directory where depth maps are saved when --save_depth_maps is set.",
     )
     return parser.parse_args()
 
@@ -92,9 +119,14 @@ def build_real_object_observations_from_video(
     stride: int = 4,
     object_provider: str = "real_detector",
     confidence_threshold: float = 0.3,
-    default_depth: Optional[float] = None,
-    model_path: Optional[str] = None,
+    default_depth: float = 5.0,
+    model_path: str = str(PROJECT_ROOT / "checkpoints" / "yolov8n.pt"),
+    device: str = "cpu",
+    skip_unknown_scale_prior: bool = True,
     mock_mode: str = "reasonable",
+    depth_provider: str = "none",
+    save_depth_maps: bool = False,
+    depth_output_dir: str = str(PROJECT_ROOT / "outputs" / "depth_maps"),
 ) -> list[Path]:
     """Extract frames, run provider, and save clip observation JSON."""
 
@@ -107,9 +139,12 @@ def build_real_object_observations_from_video(
                 "confidence_threshold": confidence_threshold,
                 "default_depth": default_depth,
                 "model_path": model_path,
+                "device": device,
+                "skip_unknown_scale_prior": skip_unknown_scale_prior,
             }
         )
     provider = get_object_provider(object_provider, **provider_kwargs)
+    depth_provider_instance = _build_depth_provider(depth_provider)
 
     video_id = video_path.stem
     frame_output_dir = (
@@ -129,7 +164,15 @@ def build_real_object_observations_from_video(
     saved_paths: list[Path] = []
     for clip_window in clip_windows:
         frame_observations = [
-            build_frame_observation(frame_path, frame_index, provider)
+            build_frame_observation(
+                frame_path,
+                frame_index,
+                provider,
+                depth_provider=depth_provider_instance,
+                depth_output_dir=depth_output_dir,
+                save_depth_map=save_depth_maps,
+                default_depth=default_depth,
+            )
             for frame_path, frame_index in zip(
                 clip_window.frame_paths, clip_window.frame_indices
             )
@@ -148,9 +191,14 @@ def build_real_object_observations_from_video(
                 "confidence_threshold": confidence_threshold,
                 "default_depth": default_depth,
                 "model_path": model_path,
+                "device": device,
+                "skip_unknown_scale_prior": skip_unknown_scale_prior,
                 "clip_len": clip_len,
                 "stride": stride,
                 "mask_area_source": "bbox_area",
+                "depth_provider": depth_provider,
+                "save_depth_maps": save_depth_maps,
+                "depth_output_dir": depth_output_dir,
             },
         )
         output_path = output_dir / f"{full_clip_id}.json"
@@ -158,6 +206,20 @@ def build_real_object_observations_from_video(
         saved_paths.append(output_path)
 
     return saved_paths
+
+
+def _build_depth_provider(provider_name: str):
+    """Create a depth provider instance from a CLI/provider name."""
+
+    if provider_name == "none":
+        return None
+    if provider_name == "mock_depth":
+        return MockDepthProvider()
+    if provider_name == "real_depth":
+        return RealDepthProvider()
+    raise ValueError(
+        "depth_provider must be one of 'mock_depth', 'real_depth', or 'none'."
+    )
 
 
 def main() -> None:
@@ -176,7 +238,12 @@ def main() -> None:
             confidence_threshold=args.confidence_threshold,
             default_depth=args.default_depth,
             model_path=args.model_path,
+            device=args.device,
+            skip_unknown_scale_prior=not args.keep_unknown_scale_prior,
             mock_mode=args.mock_mode,
+            depth_provider=args.depth_provider,
+            save_depth_maps=args.save_depth_maps,
+            depth_output_dir=args.depth_output_dir,
         )
     except Exception as exc:
         print(f"ERROR: {type(exc).__name__}: {exc}", file=sys.stderr)

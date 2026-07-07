@@ -32,22 +32,16 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 from semantic3d.io import load_clip_observation  # noqa: E402
+from semantic3d.scale_prior import (  # noqa: E402
+    ScalePriorResolver,
+    default_scale_prior_resolver,
+)
 from semantic3d.scale_depth import (  # noqa: E402
     ObjectObservation,
-    ScalePrior,
     scale_depth_residual,
     scale_depth_residual_log,
 )
 
-
-SCALE_PRIORS = {
-    "soccer_ball": ScalePrior(min_size=0.20, max_size=0.24),
-    "elephant": ScalePrior(min_size=2.40, max_size=3.40),
-    "person": ScalePrior(min_size=1.50, max_size=1.90),
-    "car": ScalePrior(min_size=1.40, max_size=1.80),
-    "cup": ScalePrior(min_size=0.08, max_size=0.15),
-    "chair": ScalePrior(min_size=0.70, max_size=1.20),
-}
 
 CSV_FIELDS = [
     "video_id",
@@ -84,6 +78,11 @@ def parse_args() -> argparse.Namespace:
         ),
         help="Path to the output PNG score visualization.",
     )
+    parser.add_argument(
+        "--scale_prior_config",
+        default=str(PROJECT_ROOT / "configs" / "scale_priors.yaml"),
+        help="YAML file containing scale_priors and aliases.",
+    )
     return parser.parse_args()
 
 
@@ -93,8 +92,61 @@ def _to_scale_depth_objects(frame_objects: list[object]) -> list[ObjectObservati
     return [obj.to_scale_depth_observation() for obj in frame_objects]  # type: ignore[attr-defined]
 
 
-def compute_rows(observation_dir: Path) -> list[dict[str, object]]:
+def _resolve_objects(
+    objects: list[ObjectObservation],
+    resolver: ScalePriorResolver,
+    stats: dict[str, int],
+) -> list[ObjectObservation]:
+    """Resolve object labels to exact/coarse scale-prior labels."""
+
+    resolved_objects: list[ObjectObservation] = []
+    for obj in objects:
+        stats["total_objects"] += 1
+        resolved = resolver.resolve(obj.label)
+        if resolved is None:
+            stats["skipped_unknown_objects"] += 1
+            print(
+                f"Skipping object {obj.object_id}: missing scale prior for label "
+                f"'{obj.label}'.",
+                file=sys.stderr,
+            )
+            continue
+
+        if resolved.resolution == "exact":
+            stats["exact_prior_objects"] += 1
+        else:
+            stats["alias_prior_objects"] += 1
+
+        resolved_objects.append(
+            ObjectObservation(
+                object_id=obj.object_id,
+                label=resolved.resolved_label,
+                mask_area=obj.mask_area,
+                frame_area=obj.frame_area,
+                depth=obj.depth,
+                confidence=obj.confidence,
+            )
+        )
+    return resolved_objects
+
+
+def compute_rows(
+    observation_dir: Path,
+    resolver: ScalePriorResolver | None = None,
+    return_stats: bool = False,
+) -> list[dict[str, object]] | tuple[list[dict[str, object]], dict[str, int]]:
     """Read observation JSON files and compute frame-level pairwise R_sd rows."""
+
+    resolver = resolver or default_scale_prior_resolver(PROJECT_ROOT)
+    scale_priors = resolver.to_scale_prior_map()
+    stats = {
+        "total_objects": 0,
+        "exact_prior_objects": 0,
+        "alias_prior_objects": 0,
+        "skipped_unknown_objects": 0,
+        "computed_pairs": 0,
+        "skipped_pairs_missing_prior": 0,
+    }
 
     json_paths = sorted(observation_dir.rglob("*.json"))
     if not json_paths:
@@ -111,24 +163,27 @@ def compute_rows(observation_dir: Path) -> list[dict[str, object]]:
 
         clip_rows: list[dict[str, object]] = []
         for frame in clip_obs.frames:
-            objects = _to_scale_depth_objects(frame.objects)
+            raw_objects = _to_scale_depth_objects(frame.objects)
+            objects = _resolve_objects(raw_objects, resolver, stats)
             for i, obj_a in enumerate(objects):
                 for j, obj_b in enumerate(objects):
                     if i >= j:
                         continue
                     try:
                         residual, _details = scale_depth_residual(
-                            obj_a, obj_b, SCALE_PRIORS
+                            obj_a, obj_b, scale_priors
                         )
                         residual_log, _details_log = scale_depth_residual_log(
-                            obj_a, obj_b, SCALE_PRIORS
+                            obj_a, obj_b, scale_priors
                         )
                     except KeyError as exc:
+                        stats["skipped_pairs_missing_prior"] += 1
                         print(
                             f"Skipping pair {obj_a.object_id}->{obj_b.object_id}: {exc}",
                             file=sys.stderr,
                         )
                         continue
+                    stats["computed_pairs"] += 1
                     clip_rows.append(
                         {
                             "video_id": clip_obs.video_id,
@@ -147,7 +202,25 @@ def compute_rows(observation_dir: Path) -> list[dict[str, object]]:
             row["clip_score"] = clip_score
         all_rows.extend(clip_rows)
 
+    _print_stats(stats)
+    if return_stats:
+        return all_rows, stats
     return all_rows
+
+
+def _print_stats(stats: dict[str, int]) -> None:
+    """Print scale-prior resolver and pair-computation statistics."""
+
+    print("Scale-prior resolution stats:")
+    for key in [
+        "total_objects",
+        "exact_prior_objects",
+        "alias_prior_objects",
+        "skipped_unknown_objects",
+        "computed_pairs",
+        "skipped_pairs_missing_prior",
+    ]:
+        print(f"  {key}: {stats[key]}")
 
 
 def save_rows_csv(rows: list[dict[str, object]], output_csv: Path) -> None:
@@ -212,13 +285,29 @@ def run_pipeline(
     observation_dir: Path,
     output_csv: Path,
     visualization_path: Path,
+    scale_prior_config: Path | None = None,
 ) -> list[dict[str, object]]:
     """Compute residual rows, save CSV, and save a score visualization."""
 
-    rows = compute_rows(observation_dir)
+    resolver = (
+        load_resolver_from_path(scale_prior_config)
+        if scale_prior_config is not None
+        else default_scale_prior_resolver(PROJECT_ROOT)
+    )
+    rows = compute_rows(observation_dir, resolver=resolver)
     save_rows_csv(rows, output_csv)
     save_clip_score_plot(rows, visualization_path)
     return rows
+
+
+def load_resolver_from_path(path: Path | None) -> ScalePriorResolver:
+    """Load a resolver from a path, falling back to project default."""
+
+    if path is None:
+        return default_scale_prior_resolver(PROJECT_ROOT)
+    from semantic3d.scale_prior import load_scale_prior_resolver
+
+    return load_scale_prior_resolver(path)
 
 
 def main() -> None:
@@ -229,6 +318,7 @@ def main() -> None:
         observation_dir=Path(args.observation_dir),
         output_csv=Path(args.output_csv),
         visualization_path=Path(args.visualization_path),
+        scale_prior_config=Path(args.scale_prior_config),
     )
     print(f"Saved {len(rows)} residual row(s) to {args.output_csv}")
     print(f"Saved visualization to {args.visualization_path}")

@@ -8,15 +8,18 @@ model weights by itself; real detector weights must already exist locally.
 from __future__ import annotations
 
 import importlib
+import sys
 import warnings
 from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, Iterable, Mapping, Optional, Sequence, Tuple, Union
 
 from .observations import ObjectObservationJSON
 from .providers import BaseObjectProvider
 
 PathLike = Union[str, Path]
 BBox = Tuple[float, float, float, float]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_MODEL_PATH = PROJECT_ROOT / "checkpoints" / "yolov8n.pt"
 
 LABEL_MAPPING: Mapping[str, str] = {
     "sports ball": "soccer_ball",
@@ -25,16 +28,36 @@ LABEL_MAPPING: Mapping[str, str] = {
     "soccer ball": "soccer_ball",
     "person": "person",
     "car": "car",
+    "bus": "bus",
+    "truck": "truck",
+    "bicycle": "bicycle",
+    "motorcycle": "motorcycle",
     "cup": "cup",
     "chair": "chair",
+    "bottle": "bottle",
+    "backpack": "backpack",
+    "handbag": "handbag",
+    "suitcase": "suitcase",
+    "dog": "dog",
+    "cat": "cat",
 }
 
 DEFAULT_SCALE_PRIOR_LABELS = {
     "soccer_ball",
     "person",
     "car",
+    "bus",
+    "truck",
+    "bicycle",
+    "motorcycle",
     "cup",
     "chair",
+    "bottle",
+    "backpack",
+    "handbag",
+    "suitcase",
+    "dog",
+    "cat",
     "elephant",
 }
 
@@ -85,9 +108,19 @@ def estimate_mock_depth(
     class_base_depth = {
         "soccer_ball": 3.0,
         "cup": 2.5,
+        "bottle": 2.5,
+        "backpack": 4.0,
+        "handbag": 3.5,
+        "suitcase": 4.5,
         "person": 8.0,
         "car": 10.0,
+        "bus": 14.0,
+        "truck": 14.0,
+        "bicycle": 7.0,
+        "motorcycle": 7.0,
         "chair": 6.0,
+        "dog": 5.0,
+        "cat": 4.0,
         "elephant": 12.0,
     }.get(label, 8.0)
 
@@ -101,27 +134,32 @@ class RealObjectProvider(BaseObjectProvider):
     """Object provider backed by a real detector or an injected detector.
 
     Args:
+        model_path: Local YOLO weights path. Defaults to checkpoints/yolov8n.pt.
+        confidence_threshold: Minimum confidence for returned detections.
+        default_depth: Temporary depth assigned to every detected object until a
+            real depth provider is connected.
+        device: Device passed to Ultralytics predict, such as cpu or cuda:0.
+        allowed_labels: Labels with available coarse scale priors. If omitted,
+            project default scale-prior labels are used.
+        skip_unknown_scale_prior: If True, detections whose normalized labels
+            are not in allowed_labels are skipped with a warning. If False, they
+            are kept so downstream code can decide how to handle missing priors.
         detector: Optional callable or object with ``predict``. It should return
             detection dicts containing bbox/xyxy, label/name/class_name, and
             confidence/score. This path is useful for tests and custom models.
-        backend: Optional backend name. Currently ``ultralytics`` is supported
-            when installed locally.
-        model_path: Local model weights path for detector backends. No download
-            is attempted if the file is missing.
-        confidence_threshold: Minimum confidence for returned detections.
-        default_depth: Optional fixed temporary depth for all detections.
-        allowed_labels: Labels allowed to flow into scale-depth residual code.
-            Unknown labels are skipped with a warning.
+        backend: Optional backend name. Currently ultralytics is supported.
     """
 
     def __init__(
         self,
-        detector: Optional[Any] = None,
+        model_path: PathLike = "checkpoints/yolov8n.pt",
         backend: str = "ultralytics",
-        model_path: Optional[PathLike] = None,
         confidence_threshold: float = 0.3,
-        default_depth: Optional[float] = None,
-        allowed_labels: Optional[set[str]] = None,
+        default_depth: float = 5.0,
+        device: str = "cpu",
+        allowed_labels: Optional[Sequence[str]] = None,
+        skip_unknown_scale_prior: bool = True,
+        detector: Optional[Any] = None,
     ) -> None:
         """Create a real object provider wrapper."""
 
@@ -129,10 +167,18 @@ class RealObjectProvider(BaseObjectProvider):
             raise ValueError(
                 f"confidence_threshold must be in [0, 1], got {confidence_threshold}."
             )
+        if default_depth <= 0:
+            raise ValueError(f"default_depth must be > 0, got {default_depth}.")
         self.backend = backend
         self.confidence_threshold = confidence_threshold
         self.default_depth = default_depth
-        self.allowed_labels = allowed_labels or set(DEFAULT_SCALE_PRIOR_LABELS)
+        self.device = device
+        self.skip_unknown_scale_prior = skip_unknown_scale_prior
+        self.allowed_labels = (
+            set(DEFAULT_SCALE_PRIOR_LABELS)
+            if allowed_labels is None
+            else {normalize_label(label) for label in allowed_labels}
+        )
 
         if detector is not None:
             self.detector = detector
@@ -164,22 +210,23 @@ class RealObjectProvider(BaseObjectProvider):
 
             label = normalize_label(raw_label)
             if label not in self.allowed_labels:
-                warnings.warn(
-                    f"Skipping detected label '{raw_label}' normalized to '{label}' "
-                    "because no scale prior is available.",
-                    RuntimeWarning,
-                    stacklevel=2,
+                message = (
+                    f"skipped object because missing scale prior: raw_label={raw_label!r}, "
+                    f"normalized_label={label!r}"
                 )
-                continue
+                if self.skip_unknown_scale_prior:
+                    print(message, file=sys.stderr)
+                    warnings.warn(message, RuntimeWarning, stacklevel=2)
+                    continue
+                print(
+                    f"keeping object without scale prior: raw_label={raw_label!r}, "
+                    f"normalized_label={label!r}",
+                    file=sys.stderr,
+                )
 
             clipped_bbox = clip_bbox(bbox, width, height)
             mask_area = bbox_area_to_mask_area(clipped_bbox)
-            depth = estimate_mock_depth(
-                label,
-                clipped_bbox,
-                frame_area,
-                default_depth=self.default_depth,
-            )
+            depth = float(self.default_depth)
             objects.append(
                 ObjectObservationJSON(
                     object_id=f"{label}_f{frame_index}_{detection_index}",
@@ -194,7 +241,7 @@ class RealObjectProvider(BaseObjectProvider):
 
         return objects
 
-    def _load_ultralytics_detector(self, model_path: Optional[PathLike]) -> Any:
+    def _load_ultralytics_detector(self, model_path: PathLike) -> Any:
         """Load a local Ultralytics model without downloading weights."""
 
         try:
@@ -206,12 +253,7 @@ class RealObjectProvider(BaseObjectProvider):
                 "weights path, or use --object_provider mock."
             ) from exc
 
-        if model_path is None:
-            raise RuntimeError(
-                "RealObjectProvider with backend 'ultralytics' requires a local "
-                "model_path. No model is downloaded automatically."
-            )
-        model_file = Path(model_path)
+        model_file = _resolve_model_path(model_path)
         if not model_file.exists():
             raise FileNotFoundError(
                 f"Local detector model_path does not exist: {model_file}. "
@@ -225,7 +267,15 @@ class RealObjectProvider(BaseObjectProvider):
         if callable(self.detector) and not hasattr(self.detector, "predict"):
             output = self.detector(frame_path)
         elif hasattr(self.detector, "predict"):
-            output = self.detector.predict(frame_path)
+            try:
+                output = self.detector.predict(
+                    source=str(frame_path),
+                    conf=self.confidence_threshold,
+                    device=self.device,
+                    verbose=False,
+                )
+            except TypeError:
+                output = self.detector.predict(frame_path)
         else:
             output = self.detector(str(frame_path), verbose=False)
 
@@ -236,6 +286,8 @@ class RealObjectProvider(BaseObjectProvider):
 
         if output is None:
             return []
+        if isinstance(output, dict):
+            return [output]
         if isinstance(output, list) and output and isinstance(output[0], dict):
             return output
         if isinstance(output, tuple) and output and isinstance(output[0], dict):
@@ -280,3 +332,13 @@ class RealObjectProvider(BaseObjectProvider):
         if len(bbox) != 4:
             raise ValueError(f"Detection bbox must contain 4 numbers, got {bbox}.")
         return str(label_value), float(confidence_value), bbox  # type: ignore[return-value]
+
+
+def _resolve_model_path(model_path: PathLike) -> Path:
+    """Resolve model_path relative to cwd first, then project root."""
+
+    path = Path(model_path)
+    if path.is_absolute() or path.exists():
+        return path
+    project_path = PROJECT_ROOT / path
+    return project_path

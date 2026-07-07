@@ -23,3 +23,8 @@ weights/
 models/
 outputs/
 src/*.egg-info/
+checkpoints/
+*.mp4
+*.avi
+*.mov
+*.mkv
