@@ -1,0 +1,25 @@
+{
+  "case_id": "case_019_anomaly_giant_soccer_near_person",
+  "expected_label": 1,
+  "description": "soccer_ball projection is too large at similar depth to person",
+  "frame_width": 1280,
+  "frame_height": 720,
+  "objects": [
+    {
+      "object_id": "obj_1",
+      "label": "soccer_ball",
+      "mask_area": 70000.0,
+      "frame_area": 921600.0,
+      "depth": 10.0,
+      "confidence": 1.0
+    },
+    {
+      "object_id": "obj_2",
+      "label": "person",
+      "mask_area": 16000.0,
+      "frame_area": 921600.0,
+      "depth": 10.0,
+      "confidence": 1.0
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "case_id": "manual_002_cup_person_reasonable",
+  "expected_label": 0,
+  "description": "cup is close to the camera while the person is farther away",
+  "frame_index": 1,
+  "frame_id": "manual_cup_person_reasonable",
+  "width": 1280,
+  "height": 720,
+  "objects": [
+    {
+      "object_id": "cup_1",
+      "label": "cup",
+      "mask_area": 9000.0,
+      "frame_area": 921600.0,
+      "depth": 2.0,
+      "confidence": 1.0,
+      "bbox": [180.0, 430.0, 270.0, 530.0]
+    },
+    {
+      "object_id": "person_1",
+      "label": "person",
+      "mask_area": 45000.0,
+      "frame_area": 921600.0,
+      "depth": 12.0,
+      "confidence": 1.0,
+      "bbox": [760.0, 180.0, 940.0, 610.0]
+    }
+  ]
+}

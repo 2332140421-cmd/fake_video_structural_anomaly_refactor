@@ -1,0 +1,25 @@
+{
+  "case_id": "case_010_reasonable_small_car",
+  "expected_label": 0,
+  "description": "reasonable small_object near and car far",
+  "frame_width": 1280,
+  "frame_height": 720,
+  "objects": [
+    {
+      "object_id": "obj_1",
+      "label": "small_object",
+      "mask_area": 2000.0,
+      "frame_area": 921600.0,
+      "depth": 10.25893,
+      "confidence": 1.0
+    },
+    {
+      "object_id": "obj_2",
+      "label": "car",
+      "mask_area": 60000.0,
+      "frame_area": 921600.0,
+      "depth": 16.0,
+      "confidence": 1.0
+    }
+  ]
+}

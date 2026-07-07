@@ -1,0 +1,25 @@
+{
+  "case_id": "case_029_invalid_missing_scale_prior",
+  "expected_label": 1,
+  "description": "invalid input: label missing from scale prior",
+  "frame_width": 1280,
+  "frame_height": 720,
+  "objects": [
+    {
+      "object_id": "obj_1",
+      "label": "spaceship",
+      "mask_area": 10000.0,
+      "frame_area": 921600.0,
+      "depth": 10.0,
+      "confidence": 1.0
+    },
+    {
+      "object_id": "obj_2",
+      "label": "person",
+      "mask_area": 22000.0,
+      "frame_area": 921600.0,
+      "depth": 10.0,
+      "confidence": 1.0
+    }
+  ]
+}

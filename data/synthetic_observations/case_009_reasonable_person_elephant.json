@@ -1,0 +1,25 @@
+{
+  "case_id": "case_009_reasonable_person_elephant",
+  "expected_label": 0,
+  "description": "reasonable person and elephant projection-depth relation",
+  "frame_width": 1280,
+  "frame_height": 720,
+  "objects": [
+    {
+      "object_id": "obj_1",
+      "label": "person",
+      "mask_area": 36000.0,
+      "frame_area": 921600.0,
+      "depth": 14.38317,
+      "confidence": 1.0
+    },
+    {
+      "object_id": "obj_2",
+      "label": "elephant",
+      "mask_area": 100000.0,
+      "frame_area": 921600.0,
+      "depth": 14.0,
+      "confidence": 1.0
+    }
+  ]
+}

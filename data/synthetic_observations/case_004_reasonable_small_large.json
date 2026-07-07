@@ -1,0 +1,25 @@
+{
+  "case_id": "case_004_reasonable_small_large",
+  "expected_label": 0,
+  "description": "reasonable small_object near and large_object far",
+  "frame_width": 1280,
+  "frame_height": 720,
+  "objects": [
+    {
+      "object_id": "obj_1",
+      "label": "small_object",
+      "mask_area": 2500.0,
+      "frame_area": 921600.0,
+      "depth": 5.817538,
+      "confidence": 1.0
+    },
+    {
+      "object_id": "obj_2",
+      "label": "large_object",
+      "mask_area": 60000.0,
+      "frame_area": 921600.0,
+      "depth": 15.0,
+      "confidence": 1.0
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "case_id": "manual_001_person_car_reasonable",
+  "expected_label": 0,
+  "description": "person and car have a plausible projection-depth relation",
+  "frame_index": 0,
+  "frame_id": "manual_person_car_reasonable",
+  "width": 1280,
+  "height": 720,
+  "objects": [
+    {
+      "object_id": "person_1",
+      "label": "person",
+      "mask_area": 30000.0,
+      "frame_area": 921600.0,
+      "depth": 13.0,
+      "confidence": 1.0,
+      "bbox": [410.0, 250.0, 530.0, 500.0]
+    },
+    {
+      "object_id": "car_1",
+      "label": "car",
+      "mask_area": 60000.0,
+      "frame_area": 921600.0,
+      "depth": 10.0,
+      "confidence": 1.0,
+      "bbox": [690.0, 340.0, 990.0, 540.0]
+    }
+  ]
+}

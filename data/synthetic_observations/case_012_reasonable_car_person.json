@@ -1,0 +1,25 @@
+{
+  "case_id": "case_012_reasonable_car_person",
+  "expected_label": 0,
+  "description": "reasonable car and person relation in reverse order",
+  "frame_width": 1280,
+  "frame_height": 720,
+  "objects": [
+    {
+      "object_id": "obj_1",
+      "label": "car",
+      "mask_area": 56000.0,
+      "frame_area": 921600.0,
+      "depth": 8.57828,
+      "confidence": 1.0
+    },
+    {
+      "object_id": "obj_2",
+      "label": "person",
+      "mask_area": 26000.0,
+      "frame_area": 921600.0,
+      "depth": 13.0,
+      "confidence": 1.0
+    }
+  ]
+}

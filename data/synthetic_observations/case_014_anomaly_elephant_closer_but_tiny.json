@@ -1,0 +1,25 @@
+{
+  "case_id": "case_014_anomaly_elephant_closer_but_tiny",
+  "expected_label": 1,
+  "description": "elephant is closer than soccer_ball but projection is far smaller",
+  "frame_width": 1280,
+  "frame_height": 720,
+  "objects": [
+    {
+      "object_id": "obj_1",
+      "label": "soccer_ball",
+      "mask_area": 9000.0,
+      "frame_area": 921600.0,
+      "depth": 14.0,
+      "confidence": 1.0
+    },
+    {
+      "object_id": "obj_2",
+      "label": "elephant",
+      "mask_area": 1000.0,
+      "frame_area": 921600.0,
+      "depth": 6.0,
+      "confidence": 1.0
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "case_id": "case_011_reasonable_cup_dog",
+  "expected_label": 0,
+  "description": "reasonable cup near and dog farther",
+  "frame_width": 1280,
+  "frame_height": 720,
+  "objects": [
+    {
+      "object_id": "obj_1",
+      "label": "cup",
+      "mask_area": 1000.0,
+      "frame_area": 921600.0,
+      "depth": 9.308061,
+      "confidence": 1.0
+    },
+    {
+      "object_id": "obj_2",
+      "label": "dog",
+      "mask_area": 24000.0,
+      "frame_area": 921600.0,
+      "depth": 8.0,
+      "confidence": 1.0
+    }
+  ]
+}

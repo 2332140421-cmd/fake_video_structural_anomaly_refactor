@@ -1,0 +1,25 @@
+{
+  "case_id": "case_008_reasonable_cup_car",
+  "expected_label": 0,
+  "description": "reasonable cup close and car far",
+  "frame_width": 1280,
+  "frame_height": 720,
+  "objects": [
+    {
+      "object_id": "obj_1",
+      "label": "cup",
+      "mask_area": 1200.0,
+      "frame_area": 921600.0,
+      "depth": 10.040871,
+      "confidence": 1.0
+    },
+    {
+      "object_id": "obj_2",
+      "label": "car",
+      "mask_area": 65000.0,
+      "frame_area": 921600.0,
+      "depth": 18.0,
+      "confidence": 1.0
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "case_id": "manual_005_cup_car_anomaly",
+  "expected_label": 1,
+  "description": "cup and car have similar depth, but cup projection is much larger than the car",
+  "frame_index": 4,
+  "frame_id": "manual_cup_car_anomaly",
+  "width": 1280,
+  "height": 720,
+  "objects": [
+    {
+      "object_id": "cup_1",
+      "label": "cup",
+      "mask_area": 50000.0,
+      "frame_area": 921600.0,
+      "depth": 8.0,
+      "confidence": 1.0,
+      "bbox": [160.0, 260.0, 410.0, 520.0]
+    },
+    {
+      "object_id": "car_1",
+      "label": "car",
+      "mask_area": 12000.0,
+      "frame_area": 921600.0,
+      "depth": 8.3,
+      "confidence": 1.0,
+      "bbox": [780.0, 410.0, 910.0, 500.0]
+    }
+  ]
+}

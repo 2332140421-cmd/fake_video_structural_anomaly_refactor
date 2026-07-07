@@ -1,0 +1,25 @@
+{
+  "case_id": "case_013_anomaly_tiny_elephant_same_depth",
+  "expected_label": 1,
+  "description": "soccer_ball and elephant have close depth but elephant projection is abnormally small",
+  "frame_width": 1280,
+  "frame_height": 720,
+  "objects": [
+    {
+      "object_id": "obj_1",
+      "label": "soccer_ball",
+      "mask_area": 5000.0,
+      "frame_area": 921600.0,
+      "depth": 10.0,
+      "confidence": 1.0
+    },
+    {
+      "object_id": "obj_2",
+      "label": "elephant",
+      "mask_area": 1200.0,
+      "frame_area": 921600.0,
+      "depth": 10.0,
+      "confidence": 1.0
+    }
+  ]
+}

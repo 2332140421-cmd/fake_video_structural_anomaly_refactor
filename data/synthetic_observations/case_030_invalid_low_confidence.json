@@ -1,0 +1,25 @@
+{
+  "case_id": "case_030_invalid_low_confidence",
+  "expected_label": 1,
+  "description": "invalid input: confidence is too low",
+  "frame_width": 1280,
+  "frame_height": 720,
+  "objects": [
+    {
+      "object_id": "obj_1",
+      "label": "cup",
+      "mask_area": 1000.0,
+      "frame_area": 921600.0,
+      "depth": 4.0,
+      "confidence": 0.2
+    },
+    {
+      "object_id": "obj_2",
+      "label": "person",
+      "mask_area": 30000.0,
+      "frame_area": 921600.0,
+      "depth": 10.0,
+      "confidence": 1.0
+    }
+  ]
+}
