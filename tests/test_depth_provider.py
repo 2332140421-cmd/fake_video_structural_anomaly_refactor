@@ -13,6 +13,7 @@ import pytest
 from semantic3d.build_observations import build_frame_observation
 from semantic3d.depth_provider import (
     MockDepthProvider,
+    RealDepthProvider,
     compute_object_depth_from_bbox,
 )
 from semantic3d.real_object_provider import RealObjectProvider
@@ -51,7 +52,39 @@ def test_invalid_bbox_returns_default_depth() -> None:
     assert compute_object_depth_from_bbox(depth_map, None, default_depth=7.0) == 7.0
 
 
-def test_build_observation_with_depth_provider(tmp_path: Path) -> None:
+def test_real_depth_provider_import() -> None:
+    pytest.importorskip("transformers")
+
+    provider = RealDepthProvider(pipeline_instance=lambda _image: {"depth": np.ones((8, 8))})
+
+    assert provider.model_name == "depth-anything/Depth-Anything-V2-Small"
+
+
+def test_real_depth_provider_smoke(tmp_path: Path) -> None:
+    pytest.importorskip("transformers")
+    frame_path = tmp_path / "frame.png"
+    _write_image(frame_path, width=96, height=64)
+
+    try:
+        provider = RealDepthProvider(
+            model_name="depth-anything/Depth-Anything-V2-Small",
+            device="cpu",
+        )
+    except Exception as exc:
+        pytest.skip(f"real depth model is not available in this environment: {exc}")
+
+    try:
+        depth = provider.predict_depth(frame_path)
+    except Exception as exc:
+        pytest.skip(f"real depth inference is not available in this environment: {exc}")
+
+    assert depth.shape == (64, 96)
+    assert depth.dtype == np.float32
+    assert np.isfinite(depth).all()
+    assert float(depth.min()) > 0
+
+
+def test_build_observation_with_real_depth_or_mock_depth(tmp_path: Path) -> None:
     frame_path = tmp_path / "frame.png"
     _write_image(frame_path, width=120, height=90)
     provider = RealObjectProvider(
@@ -88,6 +121,7 @@ def test_build_observation_with_depth_provider(tmp_path: Path) -> None:
     assert depths[0] != pytest.approx(depths[1])
     assert frame.depth_map_path is not None
     assert Path(frame.depth_map_path).exists()
+    assert Path(frame.depth_map_path).with_suffix(".png").exists()
 
 
 def test_depth_provider_none_keeps_default_depth(tmp_path: Path) -> None:

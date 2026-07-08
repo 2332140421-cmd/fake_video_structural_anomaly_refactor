@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping, Optional, Union
+from typing import Any, Literal, Mapping, Optional, Union
 
 import yaml
 
@@ -19,19 +19,54 @@ PathLike = Union[str, Path]
 
 
 @dataclass(frozen=True)
+class ScalePriorRecord:
+    """Physical scale prior with reliability metadata."""
+
+    min_size: float
+    max_size: float
+    reliable: bool = True
+
+    @property
+    def prior(self) -> ScalePrior:
+        """Return the legacy ScalePrior object consumed by R_sd functions."""
+
+        return ScalePrior(min_size=self.min_size, max_size=self.max_size)
+
+
+@dataclass(frozen=True)
 class ResolvedScalePrior:
-    """Resolved prior for a raw object label."""
+    """Resolved prior status for a raw object label."""
 
     original_label: str
     resolved_label: str
-    prior: ScalePrior
-    resolution: str
+    min_size: float
+    max_size: float
+    reliable: bool
+    source: Literal["exact", "alias", "missing", "unreliable"]
+
+    @property
+    def prior(self) -> ScalePrior:
+        """Return the legacy ScalePrior object consumed by R_sd functions."""
+
+        return ScalePrior(min_size=self.min_size, max_size=self.max_size)
+
+    @property
+    def resolution(self) -> str:
+        """Backward-compatible alias for older tests and callers."""
+
+        return self.source
+
+    @property
+    def has_prior(self) -> bool:
+        """Whether this result points to an existing scale prior."""
+
+        return self.source in {"exact", "alias", "unreliable"}
 
 
 def normalize_label(label: str) -> str:
     """Normalize category labels for exact and alias lookup."""
 
-    return label.strip().lower()
+    return "_".join(label.strip().lower().replace("_", " ").split())
 
 
 class ScalePriorResolver:
@@ -39,14 +74,22 @@ class ScalePriorResolver:
 
     def __init__(
         self,
-        scale_priors: Mapping[str, ScalePrior],
+        scale_priors: Mapping[str, ScalePrior | ScalePriorRecord],
         aliases: Optional[Mapping[str, str]] = None,
     ) -> None:
         """Create a resolver from exact priors and alias mappings."""
 
-        self.scale_priors = {
-            normalize_label(label): prior for label, prior in scale_priors.items()
-        }
+        self.scale_priors = {}
+        for label, prior in scale_priors.items():
+            if isinstance(prior, ScalePriorRecord):
+                record = prior
+            else:
+                record = ScalePriorRecord(
+                    min_size=prior.min_size,
+                    max_size=prior.max_size,
+                    reliable=True,
+                )
+            self.scale_priors[normalize_label(label)] = record
         self.aliases = {
             normalize_label(alias): normalize_label(target)
             for alias, target in (aliases or {}).items()
@@ -72,32 +115,51 @@ class ScalePriorResolver:
                     f"Alias '{alias}' points to missing scale prior '{target}'."
                 )
 
-    def resolve(self, label: str) -> Optional[ResolvedScalePrior]:
-        """Resolve a raw label to a scale prior, or return None if unknown."""
+    def resolve(
+        self,
+        label: str,
+        require_reliable: bool = True,
+    ) -> ResolvedScalePrior:
+        """Resolve a raw label to a scale prior or a missing/unreliable status."""
 
         normalized = normalize_label(label)
         if normalized in self.scale_priors:
+            record = self.scale_priors[normalized]
+            source = "exact" if record.reliable or not require_reliable else "unreliable"
             return ResolvedScalePrior(
                 original_label=label,
                 resolved_label=normalized,
-                prior=self.scale_priors[normalized],
-                resolution="exact",
+                min_size=record.min_size,
+                max_size=record.max_size,
+                reliable=record.reliable,
+                source=source,
             )
 
         target = self.aliases.get(normalized)
         if target is None:
-            return None
+            return ResolvedScalePrior(
+                original_label=label,
+                resolved_label=normalized,
+                min_size=0.0,
+                max_size=0.0,
+                reliable=False,
+                source="missing",
+            )
+        record = self.scale_priors[target]
+        source = "alias" if record.reliable or not require_reliable else "unreliable"
         return ResolvedScalePrior(
             original_label=label,
             resolved_label=target,
-            prior=self.scale_priors[target],
-            resolution="alias",
+            min_size=record.min_size,
+            max_size=record.max_size,
+            reliable=record.reliable,
+            source=source,
         )
 
     def to_scale_prior_map(self) -> dict[str, ScalePrior]:
         """Return a copy of exact coarse scale-prior mapping."""
 
-        return dict(self.scale_priors)
+        return {label: record.prior for label, record in self.scale_priors.items()}
 
 
 def load_scale_prior_resolver(config_path: PathLike) -> ScalePriorResolver:
@@ -113,15 +175,16 @@ def load_scale_prior_resolver(config_path: PathLike) -> ScalePriorResolver:
     if not isinstance(raw_priors, dict):
         raise ValueError("Scale prior config requires a 'scale_priors' mapping.")
 
-    priors: dict[str, ScalePrior] = {}
+    priors: dict[str, ScalePriorRecord] = {}
     for label, item in raw_priors.items():
         if not isinstance(item, dict):
             raise ValueError(f"Scale prior for '{label}' must be a mapping.")
         if "min" not in item or "max" not in item:
             raise ValueError(f"Scale prior for '{label}' requires min and max.")
-        priors[str(label)] = ScalePrior(
+        priors[str(label)] = ScalePriorRecord(
             min_size=float(item["min"]),
             max_size=float(item["max"]),
+            reliable=bool(item.get("reliable", True)),
         )
 
     raw_aliases = data.get("aliases", {})

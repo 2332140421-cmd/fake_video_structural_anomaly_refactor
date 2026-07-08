@@ -1,4 +1,4 @@
-"""Demo for YOLO object observations with bbox-level depth aggregation."""
+"""Demo for YOLO observations with real monocular depth aggregation."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ def run_command(command: list[str]) -> subprocess.CompletedProcess[str]:
 
 
 def main() -> None:
-    """Build real detector observations with mock depth and run R_sd."""
+    """Build real detector observations with real depth and run R_sd."""
 
     video_path = PROJECT_ROOT / "data" / "videos" / "test_real.mp4"
     model_path = PROJECT_ROOT / "checkpoints" / "yolov8n.pt"
@@ -70,13 +70,14 @@ def main() -> None:
             "--confidence_threshold",
             "0.3",
             "--depth_provider",
-            "mock_depth",
+            "real_depth",
+            "--depth_model_name",
+            "depth-anything/Depth-Anything-V2-Small",
             "--depth_output_dir",
             str(depth_output_dir),
             "--save_depth_maps",
             "--device",
             "cpu",
-            "--keep_unknown_scale_prior",
         ]
     )
     print(build_result.stdout.strip())

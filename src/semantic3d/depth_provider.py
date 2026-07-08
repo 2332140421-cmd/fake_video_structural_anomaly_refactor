@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Literal, Optional, Sequence, Union
+from typing import Any, Literal, Optional, Sequence, Union
 
 import cv2
 import numpy as np
+from PIL import Image
 
 PathLike = Union[str, Path]
 DepthMethod = Literal["median", "mean"]
@@ -71,35 +72,200 @@ class MockDepthProvider(BaseDepthProvider):
 
 
 class RealDepthProvider(BaseDepthProvider):
-    """Placeholder adapter for a future local depth-estimation model."""
+    """Depth-estimation provider backed by ``transformers.pipeline``.
 
-    def __init__(self, model: Optional[object] = None) -> None:
-        """Create a real depth provider wrapper.
+    Project convention: larger depth values mean objects are farther away.
+    Some monocular models output inverse depth or disparity, where larger values
+    mean closer. In that case, create this provider with ``invert_depth=True`` or
+    pass ``--invert_depth`` in the CLI. The provider does not guess the model's
+    direction automatically.
+    """
 
-        A concrete implementation can inject Depth Anything, MiDaS, or another
-        local model object here later.
+    def __init__(
+        self,
+        model_name: str = "depth-anything/Depth-Anything-V2-Small",
+        device: str = "cpu",
+        normalize: bool = True,
+        invert_depth: bool = False,
+        min_depth_value: float = 1e-6,
+        pipeline_instance: Optional[Any] = None,
+    ) -> None:
+        """Load a real monocular depth-estimation pipeline.
+
+        Args:
+            model_name: Hugging Face model id or local model path.
+            device: Device passed to transformers, such as ``cpu`` or ``cuda:0``.
+            normalize: If true, linearly normalize output to the stable positive
+                range [1, 10]. R_sd only uses depth ratios, so this keeps values
+                well-conditioned without claiming metric depth.
+            invert_depth: Reverse output direction before normalization. Use this
+                for models that output inverse depth/disparity.
+            min_depth_value: Lower positive clamp for non-normalized outputs.
+            pipeline_instance: Optional injected pipeline-like callable for tests.
         """
 
-        self.model = model
-        if self.model is None:
-            raise RuntimeError(
-                "RealDepthProvider is unavailable. Please install depth model "
-                "dependencies or use mock_depth."
+        if min_depth_value <= 0:
+            raise ValueError(
+                f"min_depth_value must be > 0, got {min_depth_value}."
             )
+        self.model_name = model_name
+        self.resolved_model_name = _resolve_transformers_depth_model_name(model_name)
+        self.device = device
+        self.normalize = normalize
+        self.invert_depth = invert_depth
+        self.min_depth_value = float(min_depth_value)
+        self.pipeline = pipeline_instance or self._load_pipeline(
+            self.resolved_model_name, device
+        )
+
+    @staticmethod
+    def _load_pipeline(model_name: str, device: str) -> Any:
+        """Load the transformers depth-estimation pipeline."""
+
+        try:
+            from transformers import pipeline
+        except ImportError as exc:
+            raise RuntimeError(
+                "RealDepthProvider requires transformers and pillow. Install them "
+                "with: pip install transformers pillow"
+            ) from exc
+
+        try:
+            return pipeline("depth-estimation", model=model_name, device=device)
+        except Exception as exc:
+            raise RuntimeError(
+                "RealDepthProvider could not load the depth-estimation model "
+                f"{model_name!r}. Check network access, model name, local cache, "
+                "or use --depth_provider mock_depth."
+            ) from exc
 
     def predict_depth(self, frame_path: PathLike) -> np.ndarray:
-        """Predict a depth map using the injected model."""
+        """Predict a HxW relative depth map for a frame image."""
 
-        if not hasattr(self.model, "predict_depth"):
+        path = Path(frame_path)
+        try:
+            image = Image.open(path).convert("RGB")
+        except Exception as exc:
+            raise ValueError(f"Could not read frame image with PIL: {path}") from exc
+
+        width, height = image.size
+        try:
+            result = self.pipeline(image)
+        except Exception as exc:
             raise RuntimeError(
-                "RealDepthProvider is unavailable. Please install depth model "
-                "dependencies or use mock_depth."
-            )
-        depth = self.model.predict_depth(frame_path)  # type: ignore[attr-defined]
-        depth_map = np.asarray(depth, dtype=float)
+                f"Depth-estimation pipeline failed for frame {path}: {exc}"
+            ) from exc
+
+        raw_depth = _extract_depth_output(result)
+        depth_map = _to_numpy_depth(raw_depth)
         if depth_map.ndim != 2:
             raise ValueError(f"Depth model must return HxW depth, got {depth_map.shape}.")
-        return depth_map
+        depth_map = _resize_depth(depth_map, width=width, height=height)
+        depth_map = _sanitize_depth(depth_map, min_depth_value=self.min_depth_value)
+
+        if self.invert_depth:
+            finite = depth_map[np.isfinite(depth_map)]
+            if finite.size:
+                depth_map = float(finite.max()) + float(finite.min()) - depth_map
+                depth_map = _sanitize_depth(
+                    depth_map, min_depth_value=self.min_depth_value
+                )
+
+        if self.normalize:
+            depth_map = _normalize_depth(depth_map, min_value=1.0, max_value=10.0)
+
+        return depth_map.astype(np.float32, copy=False)
+
+
+def _extract_depth_output(result: Any) -> Any:
+    """Get the depth tensor/PIL image from a transformers pipeline result."""
+
+    if isinstance(result, dict):
+        if "predicted_depth" in result:
+            return result["predicted_depth"]
+        if "depth" in result:
+            return result["depth"]
+    raise ValueError(
+        "Depth-estimation pipeline output must contain 'predicted_depth' or 'depth'."
+    )
+
+
+def _resolve_transformers_depth_model_name(model_name: str) -> str:
+    """Map common Depth Anything names to the Transformers-compatible id."""
+
+    aliases = {
+        "depth-anything/Depth-Anything-V2-Small": (
+            "depth-anything/Depth-Anything-V2-Small-hf"
+        ),
+    }
+    return aliases.get(model_name, model_name)
+
+
+def _to_numpy_depth(raw_depth: Any) -> np.ndarray:
+    """Convert a tensor, PIL image, or array-like depth output to a numpy array."""
+
+    if hasattr(raw_depth, "detach"):
+        raw_depth = raw_depth.detach().cpu().numpy()
+    elif isinstance(raw_depth, Image.Image):
+        raw_depth = np.asarray(raw_depth)
+    depth_map = np.asarray(raw_depth, dtype=np.float32)
+    depth_map = np.squeeze(depth_map)
+    return depth_map
+
+
+def _resize_depth(depth_map: np.ndarray, width: int, height: int) -> np.ndarray:
+    """Resize depth output to the original frame size."""
+
+    if depth_map.shape == (height, width):
+        return depth_map.astype(np.float32, copy=False)
+    return cv2.resize(
+        depth_map.astype(np.float32, copy=False),
+        (width, height),
+        interpolation=cv2.INTER_CUBIC,
+    )
+
+
+def _sanitize_depth(depth_map: np.ndarray, min_depth_value: float) -> np.ndarray:
+    """Replace NaN/inf and clamp depth to positive finite values."""
+
+    depth = np.asarray(depth_map, dtype=np.float32)
+    finite = depth[np.isfinite(depth)]
+    if finite.size == 0:
+        return np.full(depth.shape, min_depth_value, dtype=np.float32)
+    fill = float(np.median(finite))
+    depth = np.nan_to_num(depth, nan=fill, posinf=fill, neginf=fill)
+    return np.maximum(depth, min_depth_value).astype(np.float32, copy=False)
+
+
+def _normalize_depth(
+    depth_map: np.ndarray,
+    min_value: float = 1.0,
+    max_value: float = 10.0,
+) -> np.ndarray:
+    """Normalize a finite depth map to a stable positive range."""
+
+    depth = np.asarray(depth_map, dtype=np.float32)
+    finite = depth[np.isfinite(depth)]
+    if finite.size == 0:
+        return np.full(depth.shape, min_value, dtype=np.float32)
+    d_min = float(finite.min())
+    d_max = float(finite.max())
+    if d_max <= d_min:
+        return np.full(depth.shape, (min_value + max_value) / 2.0, dtype=np.float32)
+    normalized = (depth - d_min) / (d_max - d_min)
+    return (min_value + normalized * (max_value - min_value)).astype(np.float32)
+
+
+def save_depth_visualization(depth_map: np.ndarray, output_path: PathLike) -> Path:
+    """Save a color PNG visualization for a depth map."""
+
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    depth = _normalize_depth(np.asarray(depth_map, dtype=np.float32), 0.0, 255.0)
+    depth_uint8 = np.clip(depth, 0, 255).astype(np.uint8)
+    colored = cv2.applyColorMap(depth_uint8, cv2.COLORMAP_INFERNO)
+    cv2.imwrite(str(output), colored)
+    return output
 
 
 def compute_object_depth_from_bbox(

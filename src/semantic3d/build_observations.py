@@ -8,7 +8,11 @@ from typing import Any, Dict, Iterable, Optional, Union
 import cv2
 import numpy as np
 
-from .depth_provider import BaseDepthProvider, compute_object_depth_from_bbox
+from .depth_provider import (
+    BaseDepthProvider,
+    compute_object_depth_from_bbox,
+    save_depth_visualization,
+)
 from .observations import ClipObservationJSON, FrameObservationJSON
 from .providers import BaseObjectProvider
 
@@ -61,6 +65,7 @@ def build_frame_observation(
             output_dir.mkdir(parents=True, exist_ok=True)
             depth_path = output_dir / f"{path.stem}_depth.npy"
             np.save(depth_path, np.asarray(depth_map, dtype=np.float32))
+            save_depth_visualization(depth_map, output_dir / f"{path.stem}_depth.png")
             depth_map_path = str(depth_path)
 
     return FrameObservationJSON(

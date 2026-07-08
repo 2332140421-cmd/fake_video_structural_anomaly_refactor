@@ -15,6 +15,7 @@ from typing import Any, Iterable, Mapping, Optional, Sequence, Tuple, Union
 
 from .observations import ObjectObservationJSON
 from .providers import BaseObjectProvider
+from .scale_prior import default_scale_prior_resolver
 
 PathLike = Union[str, Path]
 BBox = Tuple[float, float, float, float]
@@ -42,24 +43,37 @@ LABEL_MAPPING: Mapping[str, str] = {
     "cat": "cat",
 }
 
-DEFAULT_SCALE_PRIOR_LABELS = {
-    "soccer_ball",
-    "person",
-    "car",
-    "bus",
-    "truck",
-    "bicycle",
-    "motorcycle",
-    "cup",
-    "chair",
-    "bottle",
-    "backpack",
-    "handbag",
-    "suitcase",
-    "dog",
-    "cat",
-    "elephant",
-}
+def _default_scale_prior_labels() -> set[str]:
+    """Return exact and alias labels that can be resolved downstream."""
+
+    fallback = {
+        "soccer_ball",
+        "person",
+        "car",
+        "bus",
+        "truck",
+        "bicycle",
+        "motorcycle",
+        "cup",
+        "chair",
+        "bottle",
+        "backpack",
+        "handbag",
+        "suitcase",
+        "dog",
+        "cat",
+        "elephant",
+    }
+    try:
+        resolver = default_scale_prior_resolver(PROJECT_ROOT)
+    except Exception:
+        return fallback
+    labels = set(resolver.scale_priors)
+    labels.update(resolver.aliases)
+    return {label.replace(" ", "_") for label in labels}
+
+
+DEFAULT_SCALE_PRIOR_LABELS = _default_scale_prior_labels()
 
 
 def normalize_label(label: str) -> str:

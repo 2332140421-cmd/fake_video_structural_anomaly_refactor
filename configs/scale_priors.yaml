@@ -2,58 +2,92 @@ scale_priors:
   person:
     min: 1.30
     max: 2.10
+    reliable: true
 
   car:
     min: 3.00
     max: 5.50
+    reliable: true
 
   bus:
     min: 8.00
     max: 14.00
+    reliable: true
 
   truck:
     min: 6.00
     max: 14.00
+    reliable: true
 
   bicycle:
     min: 1.40
     max: 2.20
+    reliable: true
 
   motorcycle:
     min: 1.80
     max: 2.60
+    reliable: true
 
   chair:
     min: 0.60
     max: 1.30
+    reliable: true
 
   table:
     min: 0.50
     max: 2.50
+    reliable: true
+
+  cup:
+    min: 0.07
+    max: 0.20
+    reliable: true
+
+  bottle:
+    min: 0.12
+    max: 0.40
+    reliable: true
+
+  traffic_light:
+    min: 0.30
+    max: 1.50
+    reliable: true
+
+  vase:
+    min: 0.10
+    max: 0.80
+    reliable: false
+
+  potted_plant:
+    min: 0.15
+    max: 1.50
+    reliable: false
 
   handheld_object:
     min: 0.05
     max: 0.35
+    reliable: true
 
   ball:
     min: 0.05
     max: 0.35
-
-  bottle:
-    min: 0.20
-    max: 0.40
+    reliable: true
 
   bag:
     min: 0.25
     max: 0.90
+    reliable: true
 
   pet:
     min: 0.25
     max: 0.90
+    reliable: true
 
   elephant:
     min: 2.40
     max: 3.40
+    reliable: true
 
 aliases:
   dining_table: table
@@ -68,6 +102,9 @@ aliases:
   cell_phone: handheld_object
   cell phone: handheld_object
   keyboard: handheld_object
+  laptop: handheld_object
+  potted plant: potted_plant
+  traffic light: traffic_light
   backpack: bag
   handbag: bag
   suitcase: bag

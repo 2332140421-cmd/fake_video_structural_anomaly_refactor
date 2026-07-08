@@ -33,6 +33,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 from semantic3d.io import load_clip_observation  # noqa: E402
 from semantic3d.scale_prior import (  # noqa: E402
+    ResolvedScalePrior,
     ScalePriorResolver,
     default_scale_prior_resolver,
 )
@@ -96,28 +97,33 @@ def _resolve_objects(
     objects: list[ObjectObservation],
     resolver: ScalePriorResolver,
     stats: dict[str, int],
-) -> list[ObjectObservation]:
-    """Resolve object labels to exact/coarse scale-prior labels."""
+) -> list[tuple[ObjectObservation, ResolvedScalePrior]]:
+    """Resolve object labels to exact/coarse scale-prior labels with status."""
 
-    resolved_objects: list[ObjectObservation] = []
+    resolved_objects: list[tuple[ObjectObservation, ResolvedScalePrior]] = []
     for obj in objects:
         stats["total_objects"] += 1
-        resolved = resolver.resolve(obj.label)
-        if resolved is None:
-            stats["skipped_unknown_objects"] += 1
+        resolved = resolver.resolve(obj.label, require_reliable=True)
+        if resolved.source == "missing":
+            stats["skipped_missing_prior_objects"] += 1
             print(
                 f"Skipping object {obj.object_id}: missing scale prior for label "
                 f"'{obj.label}'.",
                 file=sys.stderr,
             )
-            continue
-
-        if resolved.resolution == "exact":
+        elif resolved.source == "unreliable":
+            stats["skipped_unreliable_prior_objects"] += 1
+            print(
+                f"Skipping object {obj.object_id}: unreliable scale prior for label "
+                f"'{obj.label}' resolved to '{resolved.resolved_label}'.",
+                file=sys.stderr,
+            )
+        elif resolved.source == "exact":
             stats["exact_prior_objects"] += 1
-        else:
+        elif resolved.source == "alias":
             stats["alias_prior_objects"] += 1
 
-        resolved_objects.append(
+        converted = (
             ObjectObservation(
                 object_id=obj.object_id,
                 label=resolved.resolved_label,
@@ -127,6 +133,7 @@ def _resolve_objects(
                 confidence=obj.confidence,
             )
         )
+        resolved_objects.append((converted, resolved))
     return resolved_objects
 
 
@@ -143,9 +150,12 @@ def compute_rows(
         "total_objects": 0,
         "exact_prior_objects": 0,
         "alias_prior_objects": 0,
-        "skipped_unknown_objects": 0,
+        "skipped_missing_prior_objects": 0,
+        "skipped_unreliable_prior_objects": 0,
+        "total_candidate_pairs": 0,
         "computed_pairs": 0,
         "skipped_pairs_missing_prior": 0,
+        "skipped_pairs_unreliable_prior": 0,
     }
 
     json_paths = sorted(observation_dir.rglob("*.json"))
@@ -164,10 +174,19 @@ def compute_rows(
         clip_rows: list[dict[str, object]] = []
         for frame in clip_obs.frames:
             raw_objects = _to_scale_depth_objects(frame.objects)
-            objects = _resolve_objects(raw_objects, resolver, stats)
-            for i, obj_a in enumerate(objects):
-                for j, obj_b in enumerate(objects):
+            resolved_objects = _resolve_objects(raw_objects, resolver, stats)
+            stats["total_candidate_pairs"] += max(
+                0, len(resolved_objects) * (len(resolved_objects) - 1) // 2
+            )
+            for i, (obj_a, resolved_a) in enumerate(resolved_objects):
+                for j, (obj_b, resolved_b) in enumerate(resolved_objects):
                     if i >= j:
+                        continue
+                    if "missing" in {resolved_a.source, resolved_b.source}:
+                        stats["skipped_pairs_missing_prior"] += 1
+                        continue
+                    if "unreliable" in {resolved_a.source, resolved_b.source}:
+                        stats["skipped_pairs_unreliable_prior"] += 1
                         continue
                     try:
                         residual, _details = scale_depth_residual(
@@ -216,9 +235,12 @@ def _print_stats(stats: dict[str, int]) -> None:
         "total_objects",
         "exact_prior_objects",
         "alias_prior_objects",
-        "skipped_unknown_objects",
+        "skipped_missing_prior_objects",
+        "skipped_unreliable_prior_objects",
+        "total_candidate_pairs",
         "computed_pairs",
         "skipped_pairs_missing_prior",
+        "skipped_pairs_unreliable_prior",
     ]:
         print(f"  {key}: {stats[key]}")
 

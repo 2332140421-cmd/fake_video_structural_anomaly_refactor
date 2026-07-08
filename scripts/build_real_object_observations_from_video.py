@@ -98,9 +98,22 @@ def parse_args() -> argparse.Namespace:
         help="Depth provider used to update object depths.",
     )
     parser.add_argument(
+        "--depth_model_name",
+        default="depth-anything/Depth-Anything-V2-Small",
+        help="Hugging Face model id or local path for --depth_provider real_depth.",
+    )
+    parser.add_argument(
+        "--invert_depth",
+        action="store_true",
+        help=(
+            "Invert depth model output before normalization. Use this when the "
+            "model outputs inverse depth/disparity where larger values mean closer."
+        ),
+    )
+    parser.add_argument(
         "--save_depth_maps",
         action="store_true",
-        help="Save predicted depth maps as .npy files.",
+        help="Save predicted depth maps as .npy files and PNG visualizations.",
     )
     parser.add_argument(
         "--depth_output_dir",
@@ -125,6 +138,8 @@ def build_real_object_observations_from_video(
     skip_unknown_scale_prior: bool = True,
     mock_mode: str = "reasonable",
     depth_provider: str = "none",
+    depth_model_name: str = "depth-anything/Depth-Anything-V2-Small",
+    invert_depth: bool = False,
     save_depth_maps: bool = False,
     depth_output_dir: str = str(PROJECT_ROOT / "outputs" / "depth_maps"),
 ) -> list[Path]:
@@ -144,7 +159,12 @@ def build_real_object_observations_from_video(
             }
         )
     provider = get_object_provider(object_provider, **provider_kwargs)
-    depth_provider_instance = _build_depth_provider(depth_provider)
+    depth_provider_instance = _build_depth_provider(
+        depth_provider,
+        model_name=depth_model_name,
+        device=device,
+        invert_depth=invert_depth,
+    )
 
     video_id = video_path.stem
     frame_output_dir = (
@@ -197,6 +217,8 @@ def build_real_object_observations_from_video(
                 "stride": stride,
                 "mask_area_source": "bbox_area",
                 "depth_provider": depth_provider,
+                "depth_model_name": depth_model_name if depth_provider == "real_depth" else "",
+                "invert_depth": invert_depth,
                 "save_depth_maps": save_depth_maps,
                 "depth_output_dir": depth_output_dir,
             },
@@ -208,7 +230,12 @@ def build_real_object_observations_from_video(
     return saved_paths
 
 
-def _build_depth_provider(provider_name: str):
+def _build_depth_provider(
+    provider_name: str,
+    model_name: str = "depth-anything/Depth-Anything-V2-Small",
+    device: str = "cpu",
+    invert_depth: bool = False,
+):
     """Create a depth provider instance from a CLI/provider name."""
 
     if provider_name == "none":
@@ -216,7 +243,11 @@ def _build_depth_provider(provider_name: str):
     if provider_name == "mock_depth":
         return MockDepthProvider()
     if provider_name == "real_depth":
-        return RealDepthProvider()
+        return RealDepthProvider(
+            model_name=model_name,
+            device=device,
+            invert_depth=invert_depth,
+        )
     raise ValueError(
         "depth_provider must be one of 'mock_depth', 'real_depth', or 'none'."
     )
@@ -242,6 +273,8 @@ def main() -> None:
             skip_unknown_scale_prior=not args.keep_unknown_scale_prior,
             mock_mode=args.mock_mode,
             depth_provider=args.depth_provider,
+            depth_model_name=args.depth_model_name,
+            invert_depth=args.invert_depth,
             save_depth_maps=args.save_depth_maps,
             depth_output_dir=args.depth_output_dir,
         )

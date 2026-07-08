@@ -12,11 +12,13 @@ dependencies = [
     "matplotlib>=3.5",
     "opencv-python-headless>=4.8",
     "PyYAML>=6.0",
+    "pillow>=10.0",
 ]
 
 [project.optional-dependencies]
 test = ["pytest>=7.0"]
 yolo = ["ultralytics>=8.0"]
+depth = ["transformers>=4.40", "pillow>=10.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -26,6 +26,7 @@ __all__ = [
     "ResidualWeights",
     "ResolvedScalePrior",
     "ScalePrior",
+    "ScalePriorRecord",
     "ScalePriorResolver",
     "SegmentationProvider",
     "TrackerProvider",
@@ -107,6 +108,7 @@ def __getattr__(name: str) -> object:
 
     if name in {
         "ResolvedScalePrior",
+        "ScalePriorRecord",
         "ScalePriorResolver",
         "default_scale_prior_resolver",
         "load_scale_prior_resolver",

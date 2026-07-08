@@ -7,9 +7,13 @@
 ### Added
 - Added `docs/DEV_LOG.md` to track development purpose, changed files, validation commands, results, limitations, and next steps.
 - Added `CHANGELOG.md` for high-level project change summaries.
+- Added `scripts/check_depth_model_env.py` for checking transformers/PIL/torch depth-model environment.
+- Added `scripts/depth_smoke_test.py` for generating real monocular depth maps from image/video inputs.
 
 ### Changed
-- No runtime code changes in this update.
+- `RealDepthProvider` now uses a real `transformers.pipeline("depth-estimation")` backend instead of only being a placeholder.
+- Real depth observation building now supports `--depth_model_name` and `--invert_depth`.
+- Saved depth maps now include both `.npy` arrays and PNG visualizations.
 
 ### Removed
 - Nothing.

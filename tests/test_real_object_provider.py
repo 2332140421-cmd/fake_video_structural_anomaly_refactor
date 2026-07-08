@@ -96,7 +96,7 @@ def test_unknown_label_handling(tmp_path: Path) -> None:
     _write_test_frame(frame_path)
     detections = [
         {
-            "label": "traffic light",
+            "label": "unknown detector thing",
             "bbox": [10, 10, 40, 50],
             "confidence": 0.95,
         },
@@ -126,7 +126,7 @@ def test_unknown_label_handling(tmp_path: Path) -> None:
         skip_unknown_scale_prior=False,
     )
     kept_objects = keep_provider.predict(frame_path, frame_index=0, width=160, height=120)
-    assert [obj.label for obj in kept_objects] == ["traffic_light", "person"]
+    assert [obj.label for obj in kept_objects] == ["unknown_detector_thing", "person"]
 
 
 def test_build_real_observation_json_schema(tmp_path: Path) -> None:
