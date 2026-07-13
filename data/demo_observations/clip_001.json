@@ -25,7 +25,9 @@
             190.0,
             490.0
           ],
-          "mask_path": null
+          "mask_path": null,
+          "track_id": null,
+          "canonical_label": null
         },
         {
           "object_id": "elephant_f0",
@@ -40,7 +42,9 @@
             1030.0,
             570.0
           ],
-          "mask_path": null
+          "mask_path": null,
+          "track_id": null,
+          "canonical_label": null
         }
       ],
       "image_path": "frames/demo_video_001_000000.png",
@@ -68,7 +72,9 @@
             206.0,
             492.0
           ],
-          "mask_path": null
+          "mask_path": null,
+          "track_id": null,
+          "canonical_label": null
         },
         {
           "object_id": "elephant_f1",
@@ -83,7 +89,9 @@
             1038.0,
             568.0
           ],
-          "mask_path": null
+          "mask_path": null,
+          "track_id": null,
+          "canonical_label": null
         }
       ],
       "image_path": "frames/demo_video_001_000001.png",

@@ -9,12 +9,15 @@ __all__ = [
     "ClipObservationJSON",
     "ClipResidualResultJSON",
     "ClipResidualSummary",
+    "AssociationDiagnostics",
     "DepthProvider",
+    "DepthTemporalResidualResult",
     "FlowProvider",
     "FrameObservation",
     "FrameObservationJSON",
     "MockDepthProvider",
     "MockObjectProvider",
+    "ObjectAssociator",
     "ObjectLevelResidual",
     "ObjectMaskObservation",
     "ObjectObservation",
@@ -32,15 +35,23 @@ __all__ = [
     "TrackerProvider",
     "aggregate_map_by_mask",
     "aggregate_points_by_mask",
+    "aggregate_clip_depth_residuals",
+    "aggregate_track_depth_residuals",
     "aggregate_values",
     "build_clip_observation",
     "build_clips",
     "build_frame_observation",
     "bbox_area_to_mask_area",
+    "bbox_area_ratio",
+    "bbox_iou",
     "build_object_level_residuals",
     "build_object_level_residuals_with_details",
     "build_object_pair_residuals",
+    "compute_depth_temporal_residual",
+    "compute_frame_depth_reference",
     "compute_scale_depth_interval",
+    "deduplicate_frames_by_index",
+    "depth_consistency_plot_series_from_csv",
     "draw_multilevel_summary",
     "draw_object_residual_map",
     "draw_object_summary",
@@ -53,11 +64,16 @@ __all__ = [
     "load_clip_residual_result",
     "load_frame_observation",
     "load_scale_prior_resolver",
+    "normalize_object_label",
     "normalize_residuals",
+    "normalized_center_distance",
     "pairwise_scale_depth_residuals",
     "residual_values_to_dict",
     "save_clip_observation",
     "save_clip_residual_result",
+    "save_depth_consistency_tracks_plot_from_csv",
+    "save_raw_and_thresholded_residual_plots_from_csv",
+    "save_depth_consistency_tracks_plot",
     "save_frame_observation",
     "scale_depth_residual",
     "scale_depth_residual_log",
@@ -79,6 +95,34 @@ def __getattr__(name: str) -> object:
         from . import aggregation
 
         return getattr(aggregation, name)
+
+    if name in {
+        "DepthTemporalResidualResult",
+        "aggregate_clip_depth_residuals",
+        "aggregate_track_depth_residuals",
+        "compute_depth_temporal_residual",
+        "compute_frame_depth_reference",
+        "depth_consistency_plot_series_from_csv",
+        "save_depth_consistency_tracks_plot_from_csv",
+        "save_raw_and_thresholded_residual_plots_from_csv",
+        "save_depth_consistency_tracks_plot",
+    }:
+        from . import depth_temporal_consistency
+
+        return getattr(depth_temporal_consistency, name)
+
+    if name in {
+        "ObjectAssociator",
+        "AssociationDiagnostics",
+        "bbox_area_ratio",
+        "bbox_iou",
+        "deduplicate_frames_by_index",
+        "normalize_object_label",
+        "normalized_center_distance",
+    }:
+        from . import object_association
+
+        return getattr(object_association, name)
 
     if name in {
         "ClipResidualSummary",

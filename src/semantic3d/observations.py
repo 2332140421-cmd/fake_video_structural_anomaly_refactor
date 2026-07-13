@@ -44,6 +44,8 @@ class ObjectObservationJSON:
         confidence: Optional detection or tracking confidence.
         bbox: Optional bounding box [x1, y1, x2, y2] in pixel coordinates.
         mask_path: Optional path to a saved binary mask file.
+        track_id: Optional cross-frame track identifier within one video.
+        canonical_label: Optional normalized/alias-resolved label for tracking.
     """
 
     object_id: str
@@ -54,6 +56,8 @@ class ObjectObservationJSON:
     confidence: float = 1.0
     bbox: Optional[List[float]] = None
     mask_path: Optional[str] = None
+    track_id: Optional[str] = None
+    canonical_label: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Return a JSON-serializable dictionary without dropping fields."""
@@ -83,6 +87,12 @@ class ObjectObservationJSON:
             confidence=float(data.get("confidence", 1.0)),
             bbox=_optional_float_list(data.get("bbox"), "bbox"),
             mask_path=None if data.get("mask_path") is None else str(data["mask_path"]),
+            track_id=None if data.get("track_id") is None else str(data["track_id"]),
+            canonical_label=(
+                None
+                if data.get("canonical_label") is None
+                else str(data["canonical_label"])
+            ),
         )
 
     def to_scale_depth_observation(self) -> "ObjectObservation":

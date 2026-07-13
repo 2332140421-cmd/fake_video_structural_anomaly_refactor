@@ -55,6 +55,12 @@ def test_exact_prior() -> None:
     assert cup.source == "exact"
     assert cup.prior.min_size == pytest.approx(0.07)
 
+    couch = resolver.resolve("couch")
+    assert couch.resolved_label == "couch"
+    assert couch.source == "exact"
+    assert couch.reliable is True
+    assert couch.prior.max_size == pytest.approx(3.20)
+
 
 def test_alias_prior() -> None:
     resolver = default_scale_prior_resolver(PROJECT_ROOT)
@@ -62,6 +68,7 @@ def test_alias_prior() -> None:
     dining_table = resolver.resolve("dining_table")
     sports_ball = resolver.resolve("sports ball")
     mouse = resolver.resolve("mouse")
+    sofa = resolver.resolve("sofa")
 
     assert dining_table.resolved_label == "table"
     assert dining_table.source == "alias"
@@ -69,6 +76,8 @@ def test_alias_prior() -> None:
     assert sports_ball.source == "alias"
     assert mouse.resolved_label == "handheld_object"
     assert mouse.source == "alias"
+    assert sofa.resolved_label == "couch"
+    assert sofa.source == "alias"
 
 
 def test_missing_prior() -> None:
@@ -86,12 +95,15 @@ def test_unreliable_prior() -> None:
 
     vase = resolver.resolve("vase", require_reliable=True)
     plant = resolver.resolve("potted_plant", require_reliable=True)
+    book = resolver.resolve("book", require_reliable=True)
     vase_without_requirement = resolver.resolve("vase", require_reliable=False)
 
     assert vase.source == "unreliable"
     assert vase.reliable is False
     assert plant.source == "unreliable"
     assert plant.reliable is False
+    assert book.source == "unreliable"
+    assert book.reliable is False
     assert vase_without_requirement.source == "exact"
     assert vase_without_requirement.reliable is False
 
