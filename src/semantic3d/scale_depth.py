@@ -1,6 +1,6 @@
-"""Object-level scale-depth consistency residuals.
+"""Frozen coarse 2D object-level scale-depth consistency residuals.
 
-This module implements the scale-depth residual R_sd used by the prototype.
+This module implements the legacy/coarse 2D R_sd baseline used by the prototype.
 It does not depend on pretrained models. The inputs are object observations,
 class-level physical scale priors, and estimated depths.
 
@@ -290,3 +290,25 @@ def pairwise_scale_depth_residuals(
             details[(obj_a.object_id, obj_b.object_id)] = pair_details
 
     return residual_matrix, details
+
+
+def rsd_2d_coarse(
+    obj_a: ObjectObservation,
+    obj_b: ObjectObservation,
+    scale_priors: ScalePriors,
+    eps: float = 1e-8,
+) -> Tuple[float, Dict[str, float]]:
+    """Explicitly named compatibility entry point for coarse 2D R_sd."""
+
+    return scale_depth_residual(obj_a, obj_b, scale_priors, eps=eps)
+
+
+def rsd_2d_coarse_log(
+    obj_a: ObjectObservation,
+    obj_b: ObjectObservation,
+    scale_priors: ScalePriors,
+    eps: float = 1e-8,
+) -> Tuple[float, Dict[str, float]]:
+    """Explicitly named log-space compatibility entry point for coarse 2D R_sd."""
+
+    return scale_depth_residual_log(obj_a, obj_b, scale_priors, eps=eps)

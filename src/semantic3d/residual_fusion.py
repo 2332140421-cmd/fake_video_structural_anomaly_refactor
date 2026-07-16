@@ -15,9 +15,14 @@ depth consistency residual R_depth_cons:
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, fields
-from typing import Dict, Iterable, List, Sequence, Tuple, Union
+from typing import Dict, Iterable, List, Mapping, Sequence, Tuple, Union
 
 import numpy as np
+
+from .validity import MissingReason, ResidualEvidence
+
+
+LEGACY_FINITE_ONLY_BEHAVIOR = True
 
 
 @dataclass(frozen=True)
@@ -192,7 +197,7 @@ def fuse_residuals(
     weights: ResidualWeights,
     normalize: bool = False,
 ) -> Union[float, np.ndarray]:
-    """Fuse residuals into clip-level anomaly scores.
+    """Legacy finite-only fusion for existing experiment compatibility.
 
     Args:
         values: One segment residual or a sequence of segment residuals.
@@ -201,7 +206,7 @@ def fuse_residuals(
 
     Returns:
         A float for a single segment, or an N-element numpy array for multiple
-        segments.
+        segments. New 3D modules must use ``fuse_residual_evidence``.
     """
 
     value_list, was_sequence = _as_list(values)
@@ -268,3 +273,54 @@ def residual_values_to_dict(values: ResidualValues) -> Dict[str, float]:
 
     _ensure_residual_values(values)
     return {name: float(value) for name, value in asdict(values).items()}
+
+
+def fuse_residual_evidence(
+    values: Mapping[str, ResidualEvidence],
+    weights: ResidualWeights,
+    *,
+    require_all_valid: bool = True,
+) -> ResidualEvidence:
+    """Fuse evidence without converting missing components into zero.
+
+    This is the canonical fusion boundary for future 3D modules. The legacy
+    ``fuse_residuals`` function remains unchanged for reproducibility.
+    """
+
+    names = _field_names()
+    missing_fields = [name for name in names if name not in values]
+    if missing_fields:
+        return ResidualEvidence.missing(
+            "structural_residual_fusion",
+            MissingReason.MISSING_RESIDUAL_SOURCE,
+            metadata={"missing_fields": missing_fields},
+        )
+    invalid = [values[name] for name in names if not values[name].valid]
+    if invalid and require_all_valid:
+        return ResidualEvidence.missing(
+            "structural_residual_fusion",
+            invalid[0].missing_reason,
+            source_ids=tuple(source for item in values.values() for source in item.source_ids),
+            metadata={"invalid_fields": [item.name for item in invalid]},
+        )
+    valid_names = [name for name in names if values[name].valid]
+    if not valid_names:
+        return ResidualEvidence.missing(
+            "structural_residual_fusion", MissingReason.NO_VALID_EVIDENCE
+        )
+    score = sum(
+        float(getattr(weights, name)) * values[name].value for name in valid_names
+    )
+    return ResidualEvidence.observed(
+        "structural_residual_fusion",
+        score,
+        quality=float(np.mean([values[name].quality for name in valid_names])),
+        source_ids=tuple(
+            source for name in valid_names for source in values[name].source_ids
+        ),
+        metadata={
+            "valid_fields": valid_names,
+            "invalid_fields": [item.name for item in invalid],
+            "require_all_valid": require_all_valid,
+        },
+    )

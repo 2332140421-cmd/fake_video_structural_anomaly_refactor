@@ -1,0 +1,19 @@
+dynamic_3d_readiness:
+  minimum_valid_shared_frame_ratio: 0.80
+  minimum_pose_graph_connected_ratio: 0.80
+  minimum_depth_alignment_valid_ratio: 0.80
+  minimum_independent_track_coverage: 0.20
+  minimum_mean_track_length: 3.0
+  minimum_static_pose_ratio: 0.75
+  maximum_rotation_ratio_for_static: 0.25
+  minimum_rotation_supported_ratio: 0.80
+  minimum_full_se3_ratio: 0.80
+  minimum_reprojection_improvement: 0.05
+  minimum_depth_stability_improvement: 0.0
+  minimum_background_3d_stability_improvement: 0.0
+  epsilon: 1.0e-8
+
+metadata:
+  purpose: engineering_smoke_gate
+  paper_threshold: false
+  tuned_on_current_six_videos: false

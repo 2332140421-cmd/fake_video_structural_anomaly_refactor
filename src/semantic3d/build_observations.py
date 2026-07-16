@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional, Union
 
@@ -38,8 +39,10 @@ def build_frame_observation(
     height, width = image.shape[:2]
     objects = object_provider.predict(path, frame_index, width, height)
     depth_map_path = None
+    depth_metadata: Dict[str, Any] = {}
     if depth_provider is not None:
         depth_map = depth_provider.predict_depth(path)
+        depth_metadata = depth_provider.legacy_depth_metadata()
         if depth_map.shape != (height, width):
             raise ValueError(
                 f"depth_map shape {depth_map.shape} does not match frame "
@@ -76,24 +79,20 @@ def build_frame_observation(
         objects=objects,
         image_path=str(path),
         depth_map_path=depth_map_path,
+        depth_metadata=depth_metadata,
     )
 
 
 def _replace_object_depth(obj: Any, depth: float) -> Any:
-    """Return an ObjectObservationJSON-like record with a replaced depth."""
+    """Replace depth without dropping tracking, keypoints, or provenance metadata."""
 
     from .observations import ObjectObservationJSON
 
-    return ObjectObservationJSON(
-        object_id=obj.object_id,
-        label=obj.label,
-        mask_area=obj.mask_area,
-        frame_area=obj.frame_area,
-        depth=float(depth),
-        confidence=obj.confidence,
-        bbox=obj.bbox,
-        mask_path=obj.mask_path,
-    )
+    if not isinstance(obj, ObjectObservationJSON):
+        raise TypeError(
+            "Depth replacement requires ObjectObservationJSON so metadata can be preserved."
+        )
+    return replace(obj, depth=float(depth))
 
 
 def build_clip_observation(

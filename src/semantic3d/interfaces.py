@@ -32,11 +32,13 @@ class SegmentationProvider(ABC):
 
 
 class DepthProvider(ABC):
-    """Interface for monocular or multi-view depth providers.
+    """Legacy image/object-depth provider interface.
 
     Implementations should return a dense depth map as a numpy array with shape
     H x W, or an equivalent array-like output converted to numpy by the adapter.
-    A future adapter may wrap Video Depth Anything behind this interface.
+    New geometry code must use ``depth_provider.BaseDepthProvider`` and
+    ``DepthObservation``. This class remains for source compatibility and can be
+    wrapped by ``LegacyDepthProviderAdapter`` when its value semantics are known.
     """
 
     @abstractmethod
@@ -48,6 +50,10 @@ class DepthProvider(ABC):
         self, depth_map: np.ndarray, objects: Sequence[ObjectObservation]
     ) -> Dict[str, float]:
         """Return per-object representative depths keyed by object_id."""
+
+
+# Stable explicit name for callers that need to identify the old interface.
+LegacyDepthProvider = DepthProvider
 
 
 class FlowProvider(ABC):

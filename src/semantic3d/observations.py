@@ -46,6 +46,14 @@ class ObjectObservationJSON:
         mask_path: Optional path to a saved binary mask file.
         track_id: Optional cross-frame track identifier within one video.
         canonical_label: Optional normalized/alias-resolved label for tracking.
+        keypoints_2d: Optional named 2D keypoints reserved for future track evidence.
+        keypoint_confidences: Optional confidence vector aligned with keypoints_2d.
+        pose_provider: Optional keypoint provider provenance.
+        keypoint_frame_index: Optional global frame index for the keypoints.
+        person_track_id: Optional explicit person track id for future point tracks.
+        provenance: Optional provider and processing provenance.
+        quality: Optional engineering quality score, not a probability.
+        metadata: Extensible object-level metadata.
     """
 
     object_id: str
@@ -58,6 +66,14 @@ class ObjectObservationJSON:
     mask_path: Optional[str] = None
     track_id: Optional[str] = None
     canonical_label: Optional[str] = None
+    keypoints_2d: Optional[List[Dict[str, Any]]] = None
+    keypoint_confidences: Optional[List[float]] = None
+    pose_provider: Optional[str] = None
+    keypoint_frame_index: Optional[int] = None
+    person_track_id: Optional[str] = None
+    provenance: Dict[str, Any] = field(default_factory=dict)
+    quality: Optional[float] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         """Return a JSON-serializable dictionary without dropping fields."""
@@ -93,6 +109,32 @@ class ObjectObservationJSON:
                 if data.get("canonical_label") is None
                 else str(data["canonical_label"])
             ),
+            keypoints_2d=(
+                None
+                if data.get("keypoints_2d") is None
+                else [dict(point) for point in data["keypoints_2d"]]
+            ),
+            keypoint_confidences=(
+                None
+                if data.get("keypoint_confidences") is None
+                else [float(value) for value in data["keypoint_confidences"]]
+            ),
+            pose_provider=(
+                None if data.get("pose_provider") is None else str(data["pose_provider"])
+            ),
+            keypoint_frame_index=(
+                None
+                if data.get("keypoint_frame_index") is None
+                else int(data["keypoint_frame_index"])
+            ),
+            person_track_id=(
+                None
+                if data.get("person_track_id") is None
+                else str(data["person_track_id"])
+            ),
+            provenance=dict(data.get("provenance", {})),
+            quality=(None if data.get("quality") is None else float(data["quality"])),
+            metadata=dict(data.get("metadata", {})),
         )
 
     def to_scale_depth_observation(self) -> "ObjectObservation":
@@ -121,6 +163,7 @@ class FrameObservationJSON:
     objects: List[ObjectObservationJSON] = field(default_factory=list)
     image_path: Optional[str] = None
     depth_map_path: Optional[str] = None
+    depth_metadata: Dict[str, Any] = field(default_factory=dict)
     flow_residual_map_path: Optional[str] = None
     depth_residual_map_path: Optional[str] = None
     corr_residual_map_path: Optional[str] = None
@@ -158,6 +201,7 @@ class FrameObservationJSON:
                 if data.get("depth_map_path") is None
                 else str(data["depth_map_path"])
             ),
+            depth_metadata=dict(data.get("depth_metadata", {})),
             flow_residual_map_path=(
                 None
                 if data.get("flow_residual_map_path") is None

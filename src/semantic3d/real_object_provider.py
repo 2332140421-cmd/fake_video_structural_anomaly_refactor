@@ -250,6 +250,13 @@ class RealObjectProvider(BaseObjectProvider):
                     depth=depth,
                     confidence=confidence,
                     bbox=list(clipped_bbox),
+                    provenance={
+                        "object_provider": "real_detector",
+                        "backend": self.backend,
+                        "raw_label": raw_label,
+                    },
+                    quality=confidence,
+                    metadata={"mask_area_source": "bbox_area"},
                 )
             )
 

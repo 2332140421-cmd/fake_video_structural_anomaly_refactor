@@ -18,6 +18,10 @@ from .aggregation import (
     aggregate_points_by_mask,
     aggregate_values,
 )
+from .validity import MissingReason, ResidualEvidence
+
+
+LEGACY_ZERO_MISSING_BEHAVIOR = True
 
 
 @dataclass(frozen=True)
@@ -62,7 +66,7 @@ class ObjectMaskObservation:
 
 @dataclass(frozen=True)
 class ObjectLevelResidual:
-    """Single-object residuals pooled from lower-level residual fields."""
+    """Legacy scalar residuals; absent sources are historically represented as zero."""
 
     object_id: str
     label: str
@@ -96,6 +100,19 @@ class ClipResidualSummary:
     details: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class ObjectLevelResidualEvidence:
+    """Evidence-aware object residuals for new 3D-compatible modules."""
+
+    object_id: str
+    label: str
+    flow: ResidualEvidence
+    track: ResidualEvidence
+    depth_cons: ResidualEvidence
+    corr: ResidualEvidence
+    confidence: float = 1.0
+
+
 def _matrix_value(matrix: Optional[np.ndarray], i: int, j: int, name: str) -> float:
     """Fetch an optional NxN matrix value with validation."""
 
@@ -118,7 +135,10 @@ def build_object_level_residuals(
     track_residuals: Optional[np.ndarray] = None,
     aggregation_method: str = "topk_mean",
 ) -> list[ObjectLevelResidual]:
-    """Pool map- and point-level residuals into object-level residuals."""
+    """Legacy pooling where absent maps historically become zero.
+
+    New 3D code must call ``build_object_level_residual_evidence``.
+    """
 
     residuals = []
     for obj in objects:
@@ -191,6 +211,100 @@ def build_object_level_residuals_with_details(
     if track_points_xy is None or track_residuals is None:
         missing.append("track_points_xy/track_residuals")
     return residuals, {"missing_sources": missing, "aggregation_method": aggregation_method}
+
+
+def _map_evidence(
+    name: str,
+    residual_map: Optional[np.ndarray],
+    obj: ObjectMaskObservation,
+    aggregation_method: str,
+) -> ResidualEvidence:
+    """Aggregate a present map or return explicit missing evidence."""
+
+    source_id = f"object:{obj.object_id}"
+    if residual_map is None:
+        return ResidualEvidence.missing(
+            name,
+            MissingReason.MISSING_RESIDUAL_SOURCE,
+            source_ids=(source_id,),
+        )
+    try:
+        value = aggregate_map_by_mask(
+            residual_map,
+            obj.mask,
+            method=aggregation_method,
+            empty_policy="raise",
+        )
+    except ValueError as error:
+        return ResidualEvidence.missing(
+            name,
+            "empty_or_invalid_object_region",
+            source_ids=(source_id,),
+            metadata={"error": str(error)},
+        )
+    return ResidualEvidence.observed(
+        name,
+        value,
+        quality=min(1.0, max(0.0, float(obj.confidence))),
+        source_ids=(source_id,),
+    )
+
+
+def build_object_level_residual_evidence(
+    objects: Sequence[ObjectMaskObservation],
+    flow_residual_map: Optional[np.ndarray] = None,
+    depth_residual_map: Optional[np.ndarray] = None,
+    corr_residual_map: Optional[np.ndarray] = None,
+    track_points_xy: Optional[np.ndarray] = None,
+    track_residuals: Optional[np.ndarray] = None,
+    aggregation_method: str = "topk_mean",
+) -> list[ObjectLevelResidualEvidence]:
+    """Pool residuals with NaN + validity semantics instead of legacy zeros."""
+
+    output: list[ObjectLevelResidualEvidence] = []
+    for obj in objects:
+        if track_points_xy is None or track_residuals is None:
+            track = ResidualEvidence.missing(
+                "track",
+                MissingReason.MISSING_RESIDUAL_SOURCE,
+                source_ids=(f"object:{obj.object_id}",),
+            )
+        else:
+            try:
+                value = aggregate_points_by_mask(
+                    track_points_xy,
+                    track_residuals,
+                    obj.mask,
+                    method=aggregation_method,
+                    empty_policy="raise",
+                )
+                track = ResidualEvidence.observed(
+                    "track",
+                    value,
+                    quality=min(1.0, max(0.0, float(obj.confidence))),
+                    source_ids=(f"object:{obj.object_id}",),
+                )
+            except ValueError as error:
+                track = ResidualEvidence.missing(
+                    "track",
+                    "empty_or_invalid_track_region",
+                    source_ids=(f"object:{obj.object_id}",),
+                    metadata={"error": str(error)},
+                )
+        output.append(
+            ObjectLevelResidualEvidence(
+                object_id=obj.object_id,
+                label=obj.label,
+                flow=_map_evidence("flow", flow_residual_map, obj, aggregation_method),
+                track=track,
+                depth_cons=_map_evidence(
+                    "depth_cons", depth_residual_map, obj, aggregation_method
+                ),
+                corr=_map_evidence("corr", corr_residual_map, obj, aggregation_method),
+                confidence=obj.confidence,
+            )
+        )
+    return output
 
 
 def build_object_pair_residuals(

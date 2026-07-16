@@ -1,0 +1,42 @@
+experiment:
+  name: pilot_structural_residual_eval
+  split: val
+
+video:
+  # Pilot runs use the first 20 decoded frames of every video.
+  fps: null
+  max_frames: 20
+  clip_len: 8
+  stride: 4
+
+object_detection:
+  provider: real_detector
+  model_path: checkpoints/yolov8n.pt
+  confidence_threshold: 0.30
+  device: cpu
+  keep_unknown_scale_prior: true
+
+depth:
+  provider: real_depth
+  model_name: depth-anything/Depth-Anything-V2-Small
+  device: cpu
+  invert_depth: true
+  depth_mode: real_depth_invert
+  save_depth_maps: true
+  default_depth: 5.0
+  convention: larger_is_farther
+  metric_depth: false
+
+scale_depth:
+  scale_prior_path: configs/scale_priors.yaml
+  topk: 3
+
+depth_consistency:
+  # Debug value only. It is not a final paper threshold.
+  tolerance: 0.02
+  topk: 3
+  iou_threshold: 0.10
+  center_distance_threshold: 0.25
+  max_area_ratio: 3.0
+  max_frame_gap: 1
+

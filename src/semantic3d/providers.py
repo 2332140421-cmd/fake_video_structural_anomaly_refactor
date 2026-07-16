@@ -28,7 +28,11 @@ class BaseObjectProvider(ABC):
 
 
 class MockDepthProvider:
-    """Depth provider that returns deterministic object depths for mock scenes."""
+    """Legacy label-to-depth helper for synthetic object-provider tests.
+
+    This class does not produce dense depth maps and is not the canonical depth
+    provider. New frame-level code uses ``depth_provider.MockDepthProvider``.
+    """
 
     def __init__(self, mode: MockMode = "reasonable") -> None:
         """Create a mock depth provider for reasonable or anomalous geometry."""
@@ -53,6 +57,9 @@ class MockDepthProvider:
                 return 8.2 + phase
 
         raise KeyError(f"MockDepthProvider has no depth rule for label '{label}'.")
+
+
+LegacyObjectDepthProvider = MockDepthProvider
 
 
 class MockObjectProvider(BaseObjectProvider):

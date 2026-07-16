@@ -1,0 +1,233 @@
+schema_version: 1
+candidate_version: physical_candidates_2026_07_14
+created_at: "2026-07-14T00:00:00+08:00"
+reviewed_at: "2026-07-14"
+independence_statement: >-
+  Candidate values are derived only from the cited public sources. No projected
+  area, monocular depth, residual, label outcome, or NaN result from the pilot
+  real/fake videos was used to estimate or widen a physical interval.
+
+global_characteristic_dimension:
+  name: equivalent_reference_silhouette_linear_scale
+  definition: >-
+    sqrt(reference frontal physical height * reference frontal physical width).
+    This is a physical linear proxy corresponding to sqrt(projected area), up
+    to camera scale and silhouette occupancy. For a sphere, height and width
+    both equal physical diameter.
+  unit: m
+
+audit_policy:
+  allowed_unit: m
+  max_interval_ratio: 2.5
+  minimum_product_spec_sources: 3
+  minimum_product_spec_publishers: 2
+  accepted_statistical_source_count: 1
+  strict_enabled_status: reliable_single
+
+scale_prior_candidates:
+  person:
+    characteristic_dimension: equivalent_reference_silhouette_linear_scale
+    dimension_definition: sqrt(standing stature * frontal inter-scye breadth)
+    unit: m
+    min: 0.694576
+    max: 0.929007
+    estimation_method: public_anthropometric_percentile_envelope
+    interval_basis: sample_statistics
+    source_count: 1
+    sources:
+      - source_id: nasa_crew_anthropometry_2025
+        title: Crew Anthropometry and Spacesuit Sizing
+        publisher: NASA
+        url: https://ntrs.nasa.gov/api/citations/20250003042/downloads/UMN%20Lecture%202025.pdf
+        source_type: public_anthropometric_statistics
+        used_for_interval: true
+        dimensions: stature_and_inter_scye_breadth_percentiles
+        unit: cm
+        conversion_to_m: 0.01
+        note: Female 5th to male 95th percentile values derived from NASA-STD-3000 tables.
+    reliability: pending_audit
+    reliability_reason: pending reproducible audit
+    pose_sensitivity: medium
+    multimodal_warning: true
+    multimodal_reason: YOLO person includes children and adults, while the cited interval is adult crew anthropometry.
+    reviewed_at: "2026-07-14"
+    prior_version: physical_candidates_2026_07_14
+
+  cup:
+    characteristic_dimension: equivalent_reference_silhouette_linear_scale
+    dimension_definition: sqrt(upright vessel body height * body diameter)
+    unit: m
+    min: 0.076200
+    max: 0.101830
+    estimation_method: multi_publisher_product_specification_envelope
+    interval_basis: explicit_specifications
+    source_count: 4
+    sources:
+      - source_id: ikea_stockholm_2025_tumbler
+        title: STOCKHOLM 2025 tumbler, 7 oz
+        publisher: IKEA
+        url: https://www.ikea.com/us/en/p/stockholm-2025-tumbler-brown-00592417/
+        source_type: manufacturer_specification
+        used_for_interval: true
+        dimensions: height_and_diameter
+        unit: in
+        conversion_to_m: 0.0254
+        note: Height 3 in; diameter 3 in.
+      - source_id: ikea_piggal_mug
+        title: PIGGAL mug, 10 oz
+        publisher: IKEA
+        url: https://www.ikea.com/us/en/p/piggal-mug-white-green-50561828/
+        source_type: manufacturer_specification
+        used_for_interval: true
+        dimensions: height_and_diameter
+        unit: in
+        conversion_to_m: 0.0254
+        note: Height 3 in; diameter 4 in.
+      - source_id: ikea_fargklar_mug
+        title: FARGKLAR mug, 14 oz
+        publisher: IKEA
+        url: https://www.ikea.com/us/en/p/faergklar-mug-light-blue-70604879/
+        source_type: manufacturer_specification
+        used_for_interval: true
+        dimensions: height_and_diameter
+        unit: in
+        conversion_to_m: 0.0254
+        note: Height 4 in; diameter 4 in.
+      - source_id: hydroflask_12oz_mug
+        title: Hydro Flask 12 oz Mug
+        publisher: Hydro Flask
+        url: https://www.hydroflask.com/gb/hydroflask-12-oz-mug
+        source_type: manufacturer_specification
+        used_for_interval: true
+        dimensions: height_and_diameter
+        unit: cm
+        conversion_to_m: 0.01
+        note: Product height 11.56 cm; diameter 8.97 cm.
+    reliability: pending_audit
+    reliability_reason: pending reproducible audit
+    pose_sensitivity: medium
+    multimodal_warning: true
+    multimodal_reason: COCO cup combines tabletop cups, mugs, tumblers, and travel vessels with distinct aspect modes.
+    reviewed_at: "2026-07-14"
+    prior_version: physical_candidates_2026_07_14
+
+  ball:
+    characteristic_dimension: equivalent_reference_silhouette_linear_scale
+    dimension_definition: spherical physical diameter derived from circumference
+    unit: m
+    min: 0.216451
+    max: 0.222817
+    estimation_method: official_standard_formula_circumference_divided_by_pi
+    interval_basis: official_standard
+    source_count: 1
+    sources:
+      - source_id: ifab_law_2_football
+        title: Law 2 - The Ball, qualities and measurements
+        publisher: The International Football Association Board
+        url: https://www.theifab.com/laws/latest/the-ball/
+        source_type: official_standard
+        used_for_interval: true
+        dimensions: circumference_converted_to_diameter
+        unit: cm
+        conversion_to_m: 0.01
+        note: Official football circumference is 68-70 cm; diameter is circumference divided by pi.
+    reliability: pending_audit
+    reliability_reason: pending reproducible audit
+    pose_sensitivity: low
+    multimodal_warning: true
+    multimodal_reason: The YOLO COCO source label is sports ball, which includes non-football ball sizes before project mapping.
+    reviewed_at: "2026-07-14"
+    prior_version: physical_candidates_2026_07_14
+
+  car: &unsupported_pose_candidate
+    characteristic_dimension: equivalent_reference_silhouette_linear_scale
+    dimension_definition: sqrt(canonical frontal physical height * canonical frontal physical width)
+    unit: m
+    min: null
+    max: null
+    estimation_method: unsupported_in_current_source_review
+    interval_basis: none
+    source_count: 0
+    sources: []
+    reliability: pending_audit
+    reliability_reason: no independent source envelope collected in this version
+    pose_sensitivity: high
+    multimodal_warning: true
+    multimodal_reason: broad category and viewpoint-dependent projected area
+    reviewed_at: "2026-07-14"
+    prior_version: physical_candidates_2026_07_14
+
+  bus:
+    <<: *unsupported_pose_candidate
+  truck:
+    <<: *unsupported_pose_candidate
+  bicycle:
+    <<: *unsupported_pose_candidate
+  motorcycle:
+    <<: *unsupported_pose_candidate
+  chair:
+    <<: *unsupported_pose_candidate
+  couch:
+    <<: *unsupported_pose_candidate
+  table:
+    <<: *unsupported_pose_candidate
+  bottle:
+    <<: *unsupported_pose_candidate
+  traffic_light:
+    <<: *unsupported_pose_candidate
+  elephant:
+    <<: *unsupported_pose_candidate
+
+  vase:
+    <<: *unsupported_pose_candidate
+    dimension_definition: no single reviewed equivalent silhouette scale
+    multimodal_reason: tabletop and floor vases span distinct physical modes and silhouettes
+
+  potted_plant:
+    <<: *unsupported_pose_candidate
+    dimension_definition: no stable plant-plus-pot silhouette scale
+    multimodal_reason: foliage, pot size, trimming, and empty bbox area vary strongly
+
+  handheld_object:
+    <<: *unsupported_pose_candidate
+    dimension_definition: no shared scale across heterogeneous handheld categories
+    multimodal_reason: coarse alias group combines physically unrelated products
+
+  book:
+    <<: *unsupported_pose_candidate
+    dimension_definition: no pose-invariant equivalent silhouette scale for open and closed states
+    multimodal_reason: open, closed, stacked, and edge-on states have distinct projected areas
+
+  bag:
+    <<: *unsupported_pose_candidate
+    dimension_definition: no stable filled-shape equivalent silhouette scale
+    multimodal_reason: backpack, handbag, and suitcase aliases are physically multimodal
+
+  pet:
+    <<: *unsupported_pose_candidate
+    dimension_definition: no shared equivalent silhouette scale across dog and cat breeds
+    multimodal_reason: species, breed, age, and pose create severe multimodality
+
+aliases:
+  dining_table: table
+  dining table: table
+  desk: table
+  coffee_table: table
+  sofa: couch
+  sports_ball: ball
+  sports ball: ball
+  soccer_ball: ball
+  mouse: handheld_object
+  remote: handheld_object
+  cell_phone: handheld_object
+  cell phone: handheld_object
+  keyboard: handheld_object
+  laptop: handheld_object
+  potted plant: potted_plant
+  traffic light: traffic_light
+  backpack: bag
+  handbag: bag
+  suitcase: bag
+  dog: pet
+  cat: pet
+

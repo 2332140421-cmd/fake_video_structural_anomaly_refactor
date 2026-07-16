@@ -9,6 +9,12 @@ import numpy as np
 EmptyPolicy = Literal["zero", "raise"]
 
 
+# Frozen compatibility behavior: legacy callers expect empty regions to
+# aggregate to 0. New 3D code must use validity.aggregate_residual_evidence or
+# pass empty_policy="raise" and convert the failure to ResidualEvidence.missing.
+LEGACY_ZERO_EMPTY_BEHAVIOR = True
+
+
 def _as_1d_float_array(values: np.ndarray | list[float] | tuple[float, ...]) -> np.ndarray:
     """Convert input values to a finite one-dimensional float array."""
 
@@ -22,6 +28,9 @@ def topk_mean(
     empty_policy: EmptyPolicy = "zero",
 ) -> float:
     """Return the mean of the largest k_ratio proportion of values.
+
+    ``empty_policy="zero"`` is retained only for legacy reproducibility. New
+    evidence-aware code must not interpret an empty input as a normal residual.
 
     Args:
         values: One-dimensional values or any array-like input.
@@ -52,7 +61,7 @@ def aggregate_values(
     empty_policy: EmptyPolicy = "zero",
     k_ratio: float = 0.2,
 ) -> float:
-    """Aggregate one-dimensional residual values."""
+    """Aggregate values, retaining the legacy zero-on-empty default."""
 
     array = _as_1d_float_array(values)
     if array.size == 0:

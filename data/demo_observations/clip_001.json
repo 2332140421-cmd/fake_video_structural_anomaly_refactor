@@ -27,7 +27,15 @@
           ],
           "mask_path": null,
           "track_id": null,
-          "canonical_label": null
+          "canonical_label": null,
+          "keypoints_2d": null,
+          "keypoint_confidences": null,
+          "pose_provider": null,
+          "keypoint_frame_index": null,
+          "person_track_id": null,
+          "provenance": {},
+          "quality": null,
+          "metadata": {}
         },
         {
           "object_id": "elephant_f0",
@@ -44,11 +52,20 @@
           ],
           "mask_path": null,
           "track_id": null,
-          "canonical_label": null
+          "canonical_label": null,
+          "keypoints_2d": null,
+          "keypoint_confidences": null,
+          "pose_provider": null,
+          "keypoint_frame_index": null,
+          "person_track_id": null,
+          "provenance": {},
+          "quality": null,
+          "metadata": {}
         }
       ],
       "image_path": "frames/demo_video_001_000000.png",
       "depth_map_path": "depth/demo_video_001_000000.npy",
+      "depth_metadata": {},
       "flow_residual_map_path": "residuals/flow_demo_video_001_000000.npy",
       "depth_residual_map_path": "residuals/depth_demo_video_001_000000.npy",
       "corr_residual_map_path": "residuals/corr_demo_video_001_000000.npy"
@@ -74,7 +91,15 @@
           ],
           "mask_path": null,
           "track_id": null,
-          "canonical_label": null
+          "canonical_label": null,
+          "keypoints_2d": null,
+          "keypoint_confidences": null,
+          "pose_provider": null,
+          "keypoint_frame_index": null,
+          "person_track_id": null,
+          "provenance": {},
+          "quality": null,
+          "metadata": {}
         },
         {
           "object_id": "elephant_f1",
@@ -91,11 +116,20 @@
           ],
           "mask_path": null,
           "track_id": null,
-          "canonical_label": null
+          "canonical_label": null,
+          "keypoints_2d": null,
+          "keypoint_confidences": null,
+          "pose_provider": null,
+          "keypoint_frame_index": null,
+          "person_track_id": null,
+          "provenance": {},
+          "quality": null,
+          "metadata": {}
         }
       ],
       "image_path": "frames/demo_video_001_000001.png",
       "depth_map_path": "depth/demo_video_001_000001.npy",
+      "depth_metadata": {},
       "flow_residual_map_path": "residuals/flow_demo_video_001_000001.npy",
       "depth_residual_map_path": "residuals/depth_demo_video_001_000001.npy",
       "corr_residual_map_path": "residuals/corr_demo_video_001_000001.npy"

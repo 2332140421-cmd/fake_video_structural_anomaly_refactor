@@ -1,0 +1,7 @@
+video_id,video_path,label,label_name,split
+real_1,data/tests_videos/tests_real_videos/real_1.mp4,0,real,val
+real_2,data/tests_videos/tests_real_videos/real_2.mp4,0,real,val
+real_3,data/tests_videos/tests_real_videos/real_3.mp4,0,real,val
+real_4,data/tests_videos/tests_real_videos/real_4.mp4,0,real,val
+fake_1,data/tests_videos/tests_fake_videos/fake_1.mp4,1,fake,val
+fake_2,data/tests_videos/tests_fake_videos/fake_2.mp4,1,fake,val

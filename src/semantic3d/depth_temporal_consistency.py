@@ -29,6 +29,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from .observations import FrameObservationJSON, ObjectObservationJSON
+from .validity import MissingReason, ResidualEvidence, aggregate_residual_evidence
+
+
+LEGACY_ZERO_MISSING_BEHAVIOR = True
 
 
 @dataclass(frozen=True)
@@ -100,7 +104,7 @@ def compute_depth_temporal_residual(
     tolerance: float = 0.10,
     eps: float = 1e-6,
 ) -> DepthTemporalResidualResult:
-    """Compute R_depth_cons for one same-track object transition.
+    """Compute legacy R_depth_cons for one same-track object transition.
 
     The residual is independent from scale priors. It only compares how one
     tracked object's relative depth and image projection scale evolve between
@@ -110,6 +114,10 @@ def compute_depth_temporal_residual(
         z_rel_t = object_depth_t / frame_depth_reference_t
         g_t = log(z_rel_t + eps) + log(p_t + eps)
         R_depth_cons = max(0, abs(g_current - g_previous) - tolerance)
+
+    Invalid transitions retain historical zero-valued numeric fields and must
+    be converted with ``depth_transition_evidence`` in new code. The explicitly
+    named baseline is ``r_depth_cons_2p5d``.
 
     ``weighted_residual`` multiplies the residual by the geometric mean of the
     two detection confidences.
@@ -185,6 +193,66 @@ def compute_depth_temporal_residual(
         weighted_residual=confidence_weight * residual,
         valid=True,
         skip_reason="",
+    )
+
+
+def r_depth_cons_2p5d(
+    previous_object: ObjectObservationJSON,
+    current_object: ObjectObservationJSON,
+    previous_depth_reference: float,
+    current_depth_reference: float,
+    tolerance: float = 0.10,
+    eps: float = 1e-6,
+) -> DepthTemporalResidualResult:
+    """Explicitly named 2.5D compatibility entry point for R_depth_cons."""
+
+    return compute_depth_temporal_residual(
+        previous_object,
+        current_object,
+        previous_depth_reference,
+        current_depth_reference,
+        tolerance=tolerance,
+        eps=eps,
+    )
+
+
+def depth_transition_evidence(
+    result: DepthTemporalResidualResult,
+) -> ResidualEvidence:
+    """Convert a legacy transition result to NaN-aware 2.5D evidence."""
+
+    source_ids = (
+        result.track_id,
+        f"frame:{result.previous_frame_index}",
+        f"frame:{result.current_frame_index}",
+    )
+    if not result.valid:
+        return ResidualEvidence.missing(
+            "r_depth_cons_2p5d",
+            result.skip_reason or MissingReason.NO_VALID_EVIDENCE,
+            source_ids=source_ids,
+            metadata={"legacy_zero_values_ignored": True},
+        )
+    return ResidualEvidence.observed(
+        "r_depth_cons_2p5d",
+        result.residual,
+        quality=min(1.0, max(0.0, result.confidence_weight)),
+        source_ids=source_ids,
+        metadata={"raw_residual": result.raw_residual, "tolerance": result.tolerance},
+    )
+
+
+def aggregate_depth_transition_evidence(
+    results: Sequence[DepthTemporalResidualResult],
+    method: str = "mean",
+) -> ResidualEvidence:
+    """Aggregate valid transitions and return NaN when no evidence exists."""
+
+    return aggregate_residual_evidence(
+        "r_depth_cons_2p5d",
+        [depth_transition_evidence(result) for result in results],
+        method=method,
+        require_all_valid=False,
     )
 
 
@@ -334,7 +402,7 @@ def aggregate_clip_depth_residuals(
     clip_id: str = "clip",
     topk: int = 3,
 ) -> dict[str, Any]:
-    """Aggregate R_depth_cons transitions into one clip-level summary."""
+    """Legacy clip aggregation; no valid transitions historically aggregate to zero."""
 
     frame_set = {int(index) for index in frame_indices}
     clip_results = [

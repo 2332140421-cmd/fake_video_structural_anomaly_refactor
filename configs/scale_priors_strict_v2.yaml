@@ -1,0 +1,245 @@
+metadata:
+  schema_version: 2
+  prior_version: strict_physical_v2
+  prior_created_at: "2026-07-15T00:00:00+08:00"
+  prior_source: physical
+  depth_mode: real_depth_invert
+  depth_convention: larger_is_farther
+  metric_depth: false
+  projected_measurement_rules: configs/projected_measurement_rules.yaml
+  independence_statement: >-
+    Physical intervals and generic gate thresholds were fixed from the cited
+    public specifications and general image-validity rules. No projected area,
+    monocular depth, residual, class outcome, or NaN from the pilot six videos
+    was used to estimate an interval or tune a gate threshold.
+  empirical_pair_prior_enabled: false
+  allowed_reliability_statuses:
+    - strict_high
+    - conditional_physical
+
+scale_priors:
+  person:
+    characteristic_dimension: body_height
+    dimension_definition: standing body stature
+    unit: m
+    min: 1.489
+    max: 1.901
+    projected_measurement: bbox_height_norm
+    compatibility_group: vertical_extent
+    reliability_status: conditional_physical
+    sources:
+      - source_id: nasa_crew_anthropometry_2025
+        title: Crew Anthropometry and Spacesuit Sizing
+        publisher: NASA
+        url: https://ntrs.nasa.gov/api/citations/20250003042/downloads/UMN%20Lecture%202025.pdf
+        physical_dimension: standing_stature
+        note: Female 5th to male 95th percentile adult crew stature.
+    source_count: 1
+    pose_sensitivity: medium
+    observation_gate:
+      confidence_threshold: 0.30
+      border_margin_ratio: 0.005
+      border_margin_px: 2.0
+      min_bbox_dimension_px: 8.0
+      min_area_ratio: 0.0005
+      max_area_ratio: 0.90
+      aspect_ratio_range: [0.20, 1.20]
+      require_track_stability: false
+    reliability_reason: Requires a substantially upright, non-truncated person bbox; the source does not cover children.
+    prior_version: strict_physical_v2
+
+  cup:
+    characteristic_dimension: upright_height
+    dimension_definition: physical vessel body height in an upright observation
+    unit: m
+    min: 0.0762
+    max: 0.1156
+    projected_measurement: bbox_height_norm
+    compatibility_group: vertical_extent
+    reliability_status: conditional_physical
+    sources:
+      - source_id: ikea_stockholm_2025_tumbler
+        title: STOCKHOLM 2025 tumbler
+        publisher: IKEA
+        url: https://www.ikea.com/us/en/p/stockholm-2025-tumbler-brown-00592417/
+        physical_dimension: product_height
+      - source_id: ikea_piggal_mug
+        title: PIGGAL mug
+        publisher: IKEA
+        url: https://www.ikea.com/us/en/p/piggal-mug-white-green-50561828/
+        physical_dimension: product_height
+      - source_id: ikea_fargklar_mug
+        title: FARGKLAR mug
+        publisher: IKEA
+        url: https://www.ikea.com/us/en/p/faergklar-mug-light-blue-70604879/
+        physical_dimension: product_height
+      - source_id: hydroflask_12oz_mug
+        title: Hydro Flask 12 oz Mug
+        publisher: Hydro Flask
+        url: https://www.hydroflask.com/gb/hydroflask-12-oz-mug
+        physical_dimension: product_height
+    source_count: 4
+    pose_sensitivity: medium
+    observation_gate:
+      confidence_threshold: 0.30
+      border_margin_ratio: 0.005
+      border_margin_px: 2.0
+      min_bbox_dimension_px: 8.0
+      min_area_ratio: 0.0001
+      max_area_ratio: 0.50
+      aspect_ratio_range: [0.45, 1.60]
+      require_track_stability: false
+    reliability_reason: Requires an upright, complete cup-like vessel; no learned cup-state classifier is used.
+    prior_version: strict_physical_v2
+
+  bottle:
+    characteristic_dimension: upright_height
+    dimension_definition: physical bottle height in an upright observation
+    unit: m
+    min: 0.2100
+    max: 0.2832
+    projected_measurement: bbox_height_norm
+    compatibility_group: vertical_extent
+    reliability_status: conditional_physical
+    sources:
+      - source_id: nalgene_32oz_wide_mouth
+        title: 32oz Wide Mouth Bottle
+        publisher: Nalgene
+        url: https://nalgene.com/product/32oz-wide-mouth-bottle/
+        physical_dimension: product_height
+        note: Official product height 21 cm.
+      - source_id: hydroflask_21oz_standard_mouth
+        title: 21 oz Standard Mouth Bottle
+        publisher: Hydro Flask
+        url: https://www.hydroflask.com/gb/hydroflask-21-oz-standard-mouth
+        physical_dimension: product_height
+        note: Official product height 28.32 cm.
+    source_count: 2
+    pose_sensitivity: medium
+    observation_gate:
+      confidence_threshold: 0.30
+      border_margin_ratio: 0.005
+      border_margin_px: 2.0
+      min_bbox_dimension_px: 8.0
+      min_area_ratio: 0.0001
+      max_area_ratio: 0.50
+      aspect_ratio_range: [0.15, 0.80]
+      require_track_stability: false
+    reliability_reason: Requires an upright, non-truncated bottle bbox; the interval covers only cited common reusable bottles.
+    prior_version: strict_physical_v2
+
+  soccer_ball:
+    characteristic_dimension: diameter
+    dimension_definition: spherical football diameter converted from official circumference
+    unit: m
+    min: 0.216451
+    max: 0.222817
+    projected_measurement: equivalent_diameter_norm
+    compatibility_group: radial_extent
+    reliability_status: strict_high
+    sources:
+      - source_id: ifab_law_2_football
+        title: Law 2 - The Ball, qualities and measurements
+        publisher: The International Football Association Board
+        url: https://www.theifab.com/laws/latest/the-ball/
+        physical_dimension: circumference_converted_to_diameter
+    source_count: 1
+    pose_sensitivity: low
+    observation_gate:
+      confidence_threshold: 0.30
+      border_margin_ratio: 0.005
+      border_margin_px: 2.0
+      min_bbox_dimension_px: 8.0
+      min_area_ratio: 0.0001
+      max_area_ratio: 0.50
+      aspect_ratio_range: [0.65, 1.45]
+      require_track_stability: false
+    reliability_reason: A football is approximately radial and has an official physical diameter interval.
+    prior_version: strict_physical_v2
+
+  car:
+    characteristic_dimension: body_width
+    dimension_definition: exterior vehicle width under a frontal or rear view
+    unit: m
+    min: 1.7805
+    max: 1.7907
+    projected_measurement: bbox_width_norm
+    compatibility_group: horizontal_extent
+    reliability_status: pose_sensitive
+    sources:
+      - source_id: toyota_corolla_2025
+        title: 2025 Corolla eBrochure
+        publisher: Toyota
+        url: https://www.toyota.com/content/dam/toyota/brochures/pdf/2025/corolla_ebrochure.pdf
+        physical_dimension: exterior_width
+      - source_id: toyota_corolla_hatchback_2025
+        title: 2025 Corolla Hatchback eBrochure
+        publisher: Toyota
+        url: https://www.toyota.com/content/dam/toyota/brochures/pdf/2025/corolla-hb-ebro.pdf
+        physical_dimension: exterior_width
+    source_count: 2
+    pose_sensitivity: high
+    observation_gate:
+      confidence_threshold: 0.30
+      border_margin_ratio: 0.005
+      border_margin_px: 2.0
+      min_bbox_dimension_px: 12.0
+      min_area_ratio: 0.001
+      max_area_ratio: 0.90
+      aspect_ratio_range: [1.10, 4.50]
+      require_track_stability: false
+    reliability_reason: Bbox aspect ratio alone cannot establish frontal/rear view, so body width is not enabled without viewpoint parsing.
+    prior_version: strict_physical_v2
+
+  table: &unsupported_pose
+    characteristic_dimension: unresolved
+    dimension_definition: no single dimension aligned with arbitrary-view bbox extent
+    unit: m
+    min: null
+    max: null
+    projected_measurement: bbox_width_norm
+    compatibility_group: horizontal_extent
+    reliability_status: pose_sensitive
+    sources: []
+    source_count: 0
+    pose_sensitivity: high
+    observation_gate: {}
+    reliability_reason: Viewpoint and table subtype are unresolved.
+    prior_version: strict_physical_v2
+
+  couch:
+    <<: *unsupported_pose
+    reliability_reason: Frontal width, side length, and occlusion cannot be distinguished from the current bbox.
+  vase:
+    <<: *unsupported_pose
+    projected_measurement: bbox_height_norm
+    compatibility_group: vertical_extent
+    reliability_reason: Tabletop and floor vases are multimodal and orientation is unresolved.
+  book:
+    <<: *unsupported_pose
+    projected_measurement: bbox_diagonal_norm
+    compatibility_group: diagonal_extent
+    reliability_reason: Open, closed, stacked, and tilted book states are unresolved.
+  mouse:
+    <<: *unsupported_pose
+    reliability_status: unsupported
+    reliability_reason: A stable physical dimension was not independently sourced for this version.
+  remote:
+    <<: *unsupported_pose
+    reliability_status: unsupported
+    reliability_reason: A stable physical dimension was not independently sourced for this version.
+  potted_plant:
+    <<: *unsupported_pose
+    projected_measurement: bbox_height_norm
+    compatibility_group: vertical_extent
+    reliability_reason: Foliage and pot dimensions are not separable from the current bbox.
+
+aliases:
+  sports_ball: soccer_ball
+  sports ball: soccer_ball
+  ball: soccer_ball
+  dining_table: table
+  dining table: table
+  sofa: couch
+  potted plant: potted_plant
+
