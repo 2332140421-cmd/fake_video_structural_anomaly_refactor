@@ -1,0 +1,24 @@
+runtime_profile: local_wsl
+project_root: ../..
+data_root: data
+download_root: data/downloads
+temporary_root: outputs/runtime_tmp
+cache_root: .cache
+model_root: checkpoints
+output_root: outputs
+log_root: outputs/logs
+device: cpu
+num_workers: 2
+storage_safety_margin: 16106127360
+batch_storage_limit: 32212254720
+required_python_dependencies:
+  - numpy
+  - yaml
+  - pyarrow
+  - cv2
+  - torch
+required_executables:
+  - ffmpeg
+  - ffprobe
+require_cuda_for_formal_batch: true
+

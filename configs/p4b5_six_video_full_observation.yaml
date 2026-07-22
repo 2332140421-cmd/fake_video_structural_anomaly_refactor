@@ -1,0 +1,96 @@
+dataset:
+  name: p4b5_six_video_full_observation
+  pipeline_profile: p4b5_full_observation_v1
+  output_root: outputs/structural_enhancement_dataset/p4b5_six_video_full_observation
+  previous_dataset_root: outputs/structural_enhancement_dataset/p4b_six_video_smoke
+
+# Paths only: structural construction never reads real/fake labels.
+sources:
+  videos:
+    - data/tests_videos/tests_real_videos/real_1.mp4
+    - data/tests_videos/tests_real_videos/real_2.mp4
+    - data/tests_videos/tests_real_videos/real_3.mp4
+    - data/tests_videos/tests_real_videos/real_4.mp4
+    - data/tests_videos/tests_fake_videos/fake_1.mp4
+    - data/tests_videos/tests_fake_videos/fake_2.mp4
+
+clip_split:
+  window_size: 32
+  left_context: 4
+  right_context: 4
+  stride: 16
+  minimum_clip_length: 4
+  scene_cut_threshold: 0.35
+
+providers:
+  object_provider: real_detector
+  instance_mask_provider: real_instance_mask_provider
+  keypoint_provider: ultralytics_yolov8_pose
+  depth_provider: depth_anything_v2_small_hf
+  depth_model: depth-anything/Depth-Anything-V2-Small
+  offline_only: true
+  weights:
+    object_detection: checkpoints/yolov8n.pt
+    instance_segmentation: checkpoints/yolov8n-seg.pt
+    human_keypoints: checkpoints/yolov8n-pose.pt
+
+artifacts:
+  p3d_coverage_root: outputs/real_3d_evidence_coverage_v2
+  p4a_aggregation_root: outputs/partial_p4_aggregation_smoke
+  occlusion_audit_root: outputs/occlusion_event_coverage_audit
+
+branch_registry_version: p4a_registry_v1
+
+stages:
+  02_frame_decode:
+    image_format: jpg
+    reuse_previous_dataset: true
+  03_object_detection:
+    migration_source: p3d_coverage_v2
+  04_instance_segmentation:
+    formal_masks_only: true
+  05_keypoints:
+    full_person_inference: true
+    confidence_threshold: 0.25
+    keypoint_confidence_threshold: 0.25
+  06_depth:
+    all_decodable_frames: true
+    representation: relative_depth
+    direction: larger_is_farther
+    conversion: reciprocal_inverse_to_relative
+    geometry_array_dtype: float16
+    raw_array_dtype: float16
+    metric_depth: false
+  07_tracking:
+    all_clips: true
+    formal_masks_only: true
+    point_target_min: 4
+    point_target_max: 24
+  08_sequence_geometry:
+    all_clips: true
+    depth_alignment: clip_background_median_scale
+    exclude_formal_foreground_masks: true
+    static_motion_threshold_px: 1.5
+    rotation_motion_limit_px: 20.0
+  09_shared_3d:
+    frame_coordinate_scope: frame_camera_relative
+    sequence_coordinate_scope: clip_local
+    cross_clip_subtraction: false
+  10_static_evidence:
+    statistical_normalization: none
+  11_dynamic_evidence:
+    owned_frames_only: true
+    statistical_normalization: none
+  12_occlusion_evidence:
+    rescan_all_videos: true
+    no_event_status: not_applicable
+  13_multilevel_aggregation:
+    training: false
+    classification: false
+
+runtime:
+  device: cpu
+  num_workers: 1
+  random_seed: 20260722
+  deterministic: true
+  fail_dataset_on_clip_error: false

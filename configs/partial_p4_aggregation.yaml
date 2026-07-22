@@ -1,0 +1,17 @@
+aggregation:
+  method: hybrid_median_top_k
+  top_k: 3
+  trim_fraction: 0.10
+  quality_floor: 0.25
+
+temporal_localization:
+  high_evidence_threshold: 0.50
+  moving_median_window: 3
+  max_gap: 1
+  minimum_duration: 2
+  threshold_source: explicit_debug_configuration
+
+experiment_policy:
+  consume_truth_labels: false
+  train_weights_from_six_videos: false
+  output_authenticity_probability: false

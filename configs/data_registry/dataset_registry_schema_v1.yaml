@@ -1,0 +1,23 @@
+schema_version: semantic3d_data_registry_v1
+required_fields:
+  - dataset_id
+  - version
+  - official_source
+  - license
+  - citation
+  - official_split
+  - download_method
+  - expected_checksums
+  - server_root
+  - source_lineage_policy
+eligibility_fields:
+  - dataset_role
+  - is_formal_dataset
+  - eligible_for_training
+  - eligible_for_model_selection
+  - eligible_for_threshold_selection
+  - eligible_for_final_evaluation
+rules:
+  unverified_license_allows_git_redistribution: false
+  unverified_source_lineage_allows_formal_split: false
+  provider_failure_is_anomaly_evidence: false

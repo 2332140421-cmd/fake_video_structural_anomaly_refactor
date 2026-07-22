@@ -1,0 +1,40 @@
+protocol:
+  version: p4c3a_server_smoke_v1
+  scope: migration_and_server_smoke_acceptance_only
+
+runtime_config: configs/runtime/server_template.yaml
+
+execution_order:
+  - environment_preflight
+  - create_server_python_environment
+  - install_locked_dependencies
+  - run_full_unit_tests
+  - rebuild_and_validate_p4c0
+  - rebuild_and_validate_p4c1
+  - rebuild_and_validate_p4c2
+  - run_six_video_geometry_smoke
+  - compare_frozen_hashes
+  - generate_migration_acceptance_report
+  - allow_formal_dataset_registration
+
+required_hashes:
+  p4c0_protocol_sha256: 004fb982597091e038bbb833370169626326f0ad5ecd0998fd61132ed1dffc12
+  p4c1_manifest_sha256: 3bfa3cc030adc29d1bfd6374d36ee17ad9f4a6fedb48f7b882549bcba4ad57a3
+  p4c2_manifest_sha256: 2094a721bc58c7cae1d567a41d9fd31542990a95f87f0927b87c31119280e981
+  strict_v1_sha256: e86466e19fe3e1663fa855fdf73843cf7ab8b5b6c8fa8771aa46172f6b726a6b
+  strict_v2_sha256: 3c55c8eb42e19d2447b00794085d8e6fa233c37a2071ef51f23b447d23ef268b
+
+readiness_fields:
+  - ready_for_server_migration
+  - ready_for_server_smoke
+  - ready_for_formal_dataset_registration
+  - ready_for_formal_batch_execution
+
+forbidden_operations:
+  download_formal_dataset: false
+  run_formal_batch: false
+  train_model: false
+  fit_distribution: false
+  select_threshold: false
+  read_test_performance: false
+

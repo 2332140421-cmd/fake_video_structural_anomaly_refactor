@@ -1,30 +1,78 @@
+# Python environments and generated package metadata
 .venv/
+venv/
 __pycache__/
+*.py[cod]
 *.pyc
+*.egg-info/
+build/
+dist/
+
+# Test, lint, coverage, and editor caches
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 .vscode/
+.codex/
+*.sock
 
-outputs/frames/
-outputs/observations/
-outputs/real_observations/
-outputs/visualizations/
-outputs/results/*.csv
-outputs/results/*.json
+# Secrets and machine-local credentials
+.env
+.env.*
+*.pem
+*.key
+*credentials*
+*secret*
+*token*
 
+# Local data and rebuildable intermediate products
+data/raw/
+data/downloads/
+data/cache/
+data/tmp/
+data/frames/
+data/depth/
+data/flow/
+data/tracks/
+data/semantic3d/
+data/large_artifacts/
 data/real_videos/
 data/videos/
-data/demo_videos/*.mp4
+data/demo_videos/
+data/tests_videos/
 
+# Generated runtime products. Only small frozen protocol artifacts below are
+# allow-listed for Git-based server checkout validation.
+outputs/**
+!outputs/p4c1_experiment_manifest/
+!outputs/p4c1_experiment_manifest/**
+!outputs/p4c2_formal_data_readiness/
+!outputs/p4c2_formal_data_readiness/**
+!outputs/p4c3a_batch_plan/
+!outputs/p4c3a_batch_plan/**
+logs/**
+tmp/**
+cache/**
+
+# Model weights and media are registered by SHA-256, not committed by default.
+checkpoints/
+weights/
+models/
 *.pt
 *.pth
 *.onnx
 *.engine
-weights/
-models/
-outputs/
-src/*.egg-info/
-checkpoints/
 *.mp4
 *.avi
 *.mov
 *.mkv
+*.zip
+*.tar
+*.tar.gz
+
+# Machine-specific audit notes are retained locally unless manually reviewed.
+docs/DISK_USAGE_AUDIT.md
+docs/DISK_CLEANUP_REPORT.md
+docs/WSL_MIGRATION_PRECHECK.md

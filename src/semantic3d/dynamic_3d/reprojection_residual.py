@@ -141,6 +141,9 @@ def compute_dynamic_reprojection_residual(
     is_background: bool,
     predicted_foreground_point_current_camera: Optional[Sequence[float]] = None,
     has_history_motion_model: bool = False,
+    motion_model_type: str = "",
+    history_frames: Sequence[int] = (),
+    support_point_ids: Sequence[str] = (),
 ) -> DynamicReprojectionResidual:
     """Compare a geometric prediction with an independent current observation.
 
@@ -179,6 +182,14 @@ def compute_dynamic_reprojection_residual(
             return _missing(previous_point, current_observation, mode, "invalid_motion_prediction")
         if not has_history_motion_model:
             return _missing(previous_point, current_observation, mode, "motion_prediction_without_history")
+        strict_history_contract = bool(motion_model_type or history_frames or support_point_ids)
+        if strict_history_contract:
+            if len(tuple(history_frames)) < 2:
+                return _missing(previous_point, current_observation, mode, "insufficient_motion_history")
+            if any(int(frame) >= current_observation.frame_index for frame in history_frames):
+                return _missing(previous_point, current_observation, mode, "motion_prediction_uses_current_frame")
+            if not motion_model_type.strip():
+                return _missing(previous_point, current_observation, mode, "missing_motion_model_type")
         evidence_type = ReprojectionEvidenceType.DYNAMIC_RESIDUAL
     else:
         if mode == DynamicGeometryMode.STATIC_CAMERA_3D:
@@ -234,6 +245,9 @@ def compute_dynamic_reprojection_residual(
             metadata={
                 "pixel_error": pixel_error,
                 "history_motion_model": True,
+                "motion_model_type": motion_model_type or "legacy_external_history_model",
+                "history_frames": tuple(int(frame) for frame in history_frames),
+                "support_point_ids": tuple(str(value) for value in support_point_ids),
                 "observed_uv_source": current_observation.source_tracker,
                 "anomaly_threshold_applied": False,
             },
@@ -269,5 +283,8 @@ def compute_dynamic_reprojection_residual(
             "translation_used": mode == DynamicGeometryMode.FULL_SE3_3D,
             "rotation_only_translation_assumed_zero": False,
             "current_observation_independent": True,
+            "motion_model_type": motion_model_type or "legacy_external_history_model",
+            "history_frames": tuple(int(frame) for frame in history_frames),
+            "support_point_ids": tuple(str(value) for value in support_point_ids),
         },
     )

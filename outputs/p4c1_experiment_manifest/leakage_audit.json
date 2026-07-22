@@ -1,0 +1,80 @@
+{
+  "cross_split_leakage_detected": false,
+  "error_count": 0,
+  "findings": [
+    {
+      "details": "source group uses a file-hash fallback; original/derivative relationship is unknown",
+      "finding_type": "unresolved_original_derivative_identity",
+      "review_required": true,
+      "severity": "warning",
+      "source_group_id": "srcgrp_00d1b251018f09d2aa69",
+      "source_video_id_a": "vid_16841aeab1be01e8d6e0",
+      "source_video_id_b": "",
+      "split_a": "validation",
+      "split_b": ""
+    },
+    {
+      "details": "source group uses a file-hash fallback; original/derivative relationship is unknown",
+      "finding_type": "unresolved_original_derivative_identity",
+      "review_required": true,
+      "severity": "warning",
+      "source_group_id": "srcgrp_5ebf2741cd7777cb0d85",
+      "source_video_id_a": "vid_268dfd36af1b786fe5b4",
+      "source_video_id_b": "",
+      "split_a": "validation",
+      "split_b": ""
+    },
+    {
+      "details": "source group uses a file-hash fallback; original/derivative relationship is unknown",
+      "finding_type": "unresolved_original_derivative_identity",
+      "review_required": true,
+      "severity": "warning",
+      "source_group_id": "srcgrp_37ade6ecaa31f45eb219",
+      "source_video_id_a": "vid_54583b973ba895eef092",
+      "source_video_id_b": "",
+      "split_a": "validation",
+      "split_b": ""
+    },
+    {
+      "details": "source group uses a file-hash fallback; original/derivative relationship is unknown",
+      "finding_type": "unresolved_original_derivative_identity",
+      "review_required": true,
+      "severity": "warning",
+      "source_group_id": "srcgrp_3e3820a3bd210d2e8298",
+      "source_video_id_a": "vid_992deacc523c6ec71a95",
+      "source_video_id_b": "",
+      "split_a": "validation",
+      "split_b": ""
+    },
+    {
+      "details": "source group uses a file-hash fallback; original/derivative relationship is unknown",
+      "finding_type": "unresolved_original_derivative_identity",
+      "review_required": true,
+      "severity": "warning",
+      "source_group_id": "srcgrp_ad541476a7a3388e2c5f",
+      "source_video_id_a": "vid_afb34584f174e65dd88c",
+      "source_video_id_b": "",
+      "split_a": "validation",
+      "split_b": ""
+    },
+    {
+      "details": "source group uses a file-hash fallback; original/derivative relationship is unknown",
+      "finding_type": "unresolved_original_derivative_identity",
+      "review_required": true,
+      "severity": "warning",
+      "source_group_id": "srcgrp_2895c465aad64271e3a8",
+      "source_video_id_a": "vid_f25efe56b602def055a7",
+      "source_video_id_b": "",
+      "split_a": "validation",
+      "split_b": ""
+    }
+  ],
+  "overlapping_clips_inherit_video_split": true,
+  "residual_values_used": false,
+  "sample_count": 59,
+  "test_used_for_tuning": false,
+  "unique_source_group_count": 6,
+  "unique_source_video_count": 6,
+  "unresolved_original_derivative_identity_count": 6,
+  "warning_count": 6
+}

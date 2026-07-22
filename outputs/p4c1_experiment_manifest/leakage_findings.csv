@@ -1,0 +1,7 @@
+finding_type,severity,source_video_id_a,source_video_id_b,source_group_id,split_a,split_b,details,review_required
+unresolved_original_derivative_identity,warning,vid_16841aeab1be01e8d6e0,,srcgrp_00d1b251018f09d2aa69,validation,,source group uses a file-hash fallback; original/derivative relationship is unknown,True
+unresolved_original_derivative_identity,warning,vid_268dfd36af1b786fe5b4,,srcgrp_5ebf2741cd7777cb0d85,validation,,source group uses a file-hash fallback; original/derivative relationship is unknown,True
+unresolved_original_derivative_identity,warning,vid_54583b973ba895eef092,,srcgrp_37ade6ecaa31f45eb219,validation,,source group uses a file-hash fallback; original/derivative relationship is unknown,True
+unresolved_original_derivative_identity,warning,vid_992deacc523c6ec71a95,,srcgrp_3e3820a3bd210d2e8298,validation,,source group uses a file-hash fallback; original/derivative relationship is unknown,True
+unresolved_original_derivative_identity,warning,vid_afb34584f174e65dd88c,,srcgrp_ad541476a7a3388e2c5f,validation,,source group uses a file-hash fallback; original/derivative relationship is unknown,True
+unresolved_original_derivative_identity,warning,vid_f25efe56b602def055a7,,srcgrp_2895c465aad64271e3a8,validation,,source group uses a file-hash fallback; original/derivative relationship is unknown,True

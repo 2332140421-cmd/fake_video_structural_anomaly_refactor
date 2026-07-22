@@ -1,0 +1,5 @@
+split,sample_count,usable_count,excluded_count,source_video_count,source_group_count,real_sample_count,fake_sample_count,unknown_label_count
+train,0,0,0,0,0,0,0,0
+validation,59,50,9,6,6,45,14,0
+test,0,0,0,0,0,0,0,0
+official_conflict,0,0,0,0,0,0,0,0

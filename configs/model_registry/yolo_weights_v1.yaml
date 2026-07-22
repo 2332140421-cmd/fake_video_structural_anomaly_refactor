@@ -1,0 +1,55 @@
+registry:
+  schema_version: semantic3d_model_registry_v1
+  registry_id: yolo_weights_v1
+  expected_library: ultralytics
+  expected_library_version: 8.4.90
+  license_review_note: >-
+    Ultralytics documents AGPL-3.0 and Enterprise licensing options for its code
+    and models. Redistribution approval has not been independently confirmed for
+    these local files, so the weight binaries must not be committed to Git.
+
+models:
+  - model_id: yolov8n_detection
+    filename: yolov8n.pt
+    variant: YOLOv8n detection
+    purpose: object_detection
+    source: https://github.com/ultralytics/assets/releases/download/v8.4.0/yolov8n.pt
+    license_status: upstream_agpl_or_enterprise_terms_recorded_redistribution_not_reviewed
+    redistribution_allowed: false
+    expected_library: ultralytics
+    expected_library_version: 8.4.90
+    size_bytes: 6534387
+    sha256: 31e20dde3def09e2cf938c7be6fe23d9150bbbe503982af13345706515f2ef95
+    server_target_path: ${MODEL_ROOT}/yolov8n.pt
+    acquisition_method: official_server_download_or_manual_copy_then_sha256_verify
+    required_for_server_smoke: true
+
+  - model_id: yolov8n_segmentation
+    filename: yolov8n-seg.pt
+    variant: YOLOv8n instance segmentation
+    purpose: instance_segmentation
+    source: https://github.com/ultralytics/assets/releases/download/v8.4.0/yolov8n-seg.pt
+    license_status: upstream_agpl_or_enterprise_terms_recorded_redistribution_not_reviewed
+    redistribution_allowed: false
+    expected_library: ultralytics
+    expected_library_version: 8.4.90
+    size_bytes: 7071756
+    sha256: a7cd8f929e1903d78a12a48efecab430209f18dc46cb96c3599a5980c63c423c
+    server_target_path: ${MODEL_ROOT}/yolov8n-seg.pt
+    acquisition_method: official_server_download_or_manual_copy_then_sha256_verify
+    required_for_server_smoke: true
+
+  - model_id: yolov8n_pose
+    filename: yolov8n-pose.pt
+    variant: YOLOv8n human pose
+    purpose: human_keypoints
+    source: https://github.com/ultralytics/assets/releases/download/v8.4.0/yolov8n-pose.pt
+    license_status: upstream_agpl_or_enterprise_terms_recorded_redistribution_not_reviewed
+    redistribution_allowed: false
+    expected_library: ultralytics
+    expected_library_version: 8.4.90
+    size_bytes: 6828990
+    sha256: 7f80660bc2f97d664d86fc9f50fd5903af392fe332c0d603fa0dd6c78bf8844c
+    server_target_path: ${MODEL_ROOT}/yolov8n-pose.pt
+    acquisition_method: official_server_download_or_manual_copy_then_sha256_verify
+    required_for_server_smoke: true

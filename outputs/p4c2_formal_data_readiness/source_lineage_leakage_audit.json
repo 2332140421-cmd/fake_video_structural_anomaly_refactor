@@ -1,0 +1,11 @@
+{
+  "authenticity_performance_read": false,
+  "blocked_split_count": 6,
+  "cross_split_leakage_detected": false,
+  "finding_count": 0,
+  "findings": [],
+  "formal_split_count": 0,
+  "residual_values_used": false,
+  "unverified_lineage_count": 6,
+  "verified_lineage_count": 0
+}

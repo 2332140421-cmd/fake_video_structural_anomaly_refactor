@@ -1,0 +1,129 @@
+{
+  "branch_tiers": {
+    "D1": "static_camera_3d eligible",
+    "D2": "rotation_compensated eligible",
+    "D3": "full_se3_3d eligible",
+    "O": "occlusion observable",
+    "S": "frame static 3D eligible"
+  },
+  "classification_metrics_computed": false,
+  "config_path": "/home/chenyh/fake_video_structural_anomaly/configs/p4c0_experiment_protocol_v1.yaml",
+  "config_sha256": "8a4a8f5d6ac795646876042a84c9b0a4fdb1d06bec31045b734c3dfb64f8a304",
+  "created_at": "2026-07-22T05:41:11.673880+00:00",
+  "dataset_roles": [
+    "geometry_validation"
+  ],
+  "duplicate_policy": {
+    "near_duplicate_threshold": 0.92,
+    "visual_embedding_provider": "optional_not_configured"
+  },
+  "formal_performance_claim_allowed": false,
+  "label_protocol": {
+    "filename_label_inference": false,
+    "labels_manifest_is_external_to_structural_cache": true,
+    "source_manifest": "/home/chenyh/fake_video_structural_anomaly/data/manifests/pilot_real_fake.csv"
+  },
+  "leakage_audit": {
+    "conflict_count": 0,
+    "error_count": 0,
+    "labels_read_by_structural_builder": false,
+    "normalization_fit_splits": [
+      "train"
+    ],
+    "reported_conflict_types": [],
+    "residual_values_used_for_split": false,
+    "source_group_review_required_count": 6,
+    "test_used_for_normalization_fit": false,
+    "test_used_for_threshold_tuning": false,
+    "threshold_tuning_splits": [
+      "validation"
+    ]
+  },
+  "missingness_bias": {
+    "coverage_feature_ablation_required_if_used": true,
+    "provider_failure_is_anomaly_evidence": false,
+    "risk_count": 1,
+    "risks": [
+      {
+        "absolute_class_difference": 0.43824424163407216,
+        "metric": "frame_shared_3d_coverage",
+        "recommended_action": "stratify_or_balance_and_ablate_coverage_features",
+        "shortcut_risk": true,
+        "split": "validation"
+      }
+    ],
+    "shortcut_risk": true,
+    "small_sample_warning": true
+  },
+  "modeling_routes": {
+    "normal_reference": {
+      "fit_class": "real_only",
+      "fit_splits": [
+        "train"
+      ],
+      "fit_video_ids": [],
+      "group_by": [
+        "branch",
+        "geometry_mode",
+        "evidence_level"
+      ],
+      "parameters_fitted_now": false
+    },
+    "supervised_aggregation": {
+      "final_evaluation_splits": [
+        "test"
+      ],
+      "parameters_fitted_now": false,
+      "threshold_tuning_splits": [
+        "validation"
+      ],
+      "training_splits": [
+        "train"
+      ],
+      "training_video_ids": [],
+      "validation_splits": [
+        "validation"
+      ]
+    }
+  },
+  "protocol_version": "p4c0_experiment_protocol_v1",
+  "readiness_reason": "source identities, formal datasets, annotations, and branch/event coverage remain incomplete",
+  "ready_for_p4b_scale_formal_build": false,
+  "residual_values_read_for_split": false,
+  "six_video_protocol_smoke_only": true,
+  "source_group_review_required_count": 6,
+  "split_policy": {
+    "algorithm_version": "group_aware_balanced_v1",
+    "decision_inputs": [
+      "source_group_id",
+      "binary_label",
+      "manipulation_type",
+      "source_dataset",
+      "resolution",
+      "compression",
+      "duration",
+      "geometry_mode",
+      "branch_eligibility"
+    ],
+    "frame_or_clip_random_split_allowed": false,
+    "group_aware_when_no_official_split": true,
+    "official_split_priority": true,
+    "random_seed": 20260722
+  },
+  "statistical_parameters_fitted": false,
+  "strict_prior_hashes": {
+    "scale_priors_strict_v1.yaml": "e86466e19fe3e1663fa855fdf73843cf7ab8b5b6c8fa8771aa46172f6b726a6b",
+    "scale_priors_strict_v2.yaml": "3c55c8eb42e19d2447b00794085d8e6fa233c37a2071ef51f23b447d23ef268b"
+  },
+  "structural_dataset_id": "dataset_1ae499fd7cdd9d8501dc",
+  "structural_pipeline_version": "p4b5_full_observation_v1",
+  "task_eligibility_counts": {
+    "detection_training_eligible": 0,
+    "geometry_validation_only": 6,
+    "object_localization_eligible": 0,
+    "occlusion_validation_eligible": 0,
+    "spatial_localization_eligible": 0,
+    "temporal_localization_eligible": 0,
+    "video_classification_eligible": 0
+  }
+}

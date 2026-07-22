@@ -2084,3 +2084,1309 @@ git diff --check
 - 尚不能进入可信真实 P3-B 性能实验。应先接入对象级长期 point association、实例 mask/语义关键点和独立历史运动模型。
 - 完整 world 3D 动态分支仍需标定 K 和带兼容 translation scale 的 full SE3 pose，建议在具有明确平移视差和外部 pose/SLAM 参考的独立序列上验证。
 - 后续所有动态 evidence 必须继续区分 QA、motion diagnostic 和 formal anomaly residual；门控失败保持 NaN，不得用 0 表示无证据。
+
+## 2026-07-21 - P3-A.5 Object Point Binding and P3-B Dynamic Structural Residuals
+
+### 目的
+在 P3-0.6/P3-A 的共享几何和独立二维点轨迹契约上，建立对象与稳定点身份绑定、只读历史运动预测、固定对象结构图，以及方向、尺度归一化相对速度、内部结构时序和对象运动重投影证据。本阶段仅验证动态结构接口、合成真值和三个真实正常短片段 smoke，不实现遮挡残差、最终融合、真假训练、AUC/F1、公制速度或阈值调节。
+
+### 新增文件
+- `src/semantic3d/dynamic_3d/object_track_binding.py`：定义 `ObjectPointBinding`、`ObjectPointTrack3D`、`ObjectDynamicObservation`，按实例 mask、语义关键点、跟踪 mask、收缩 bbox、普通 bbox 的优先级绑定稳定 point ID，并拒绝对象切换、归属丢失、边界点、低质量和过度三维跳变。
+- `src/semantic3d/dynamic_3d/structure_graph.py`：定义固定 `ObjectStructureGraph` 和 `StructureEdge`；人体仅连接确定语义关键点，普通对象在首个有效帧建立固定 kNN 图，后续不重建邻接。
+- `src/semantic3d/dynamic_3d/motion_model.py`：定义历史只读 `BaseObjectMotionModel`、点常速度模型和 leave-one-point-out 对象中位平移模型；预测不读取目标帧观测。
+- `src/semantic3d/dynamic_3d/direction_residual.py`：实现点自身历史、对象中位方向和局部邻点方向的 `1-cos` 残差；近静止位移保持 invalid/NaN。
+- `src/semantic3d/dynamic_3d/relative_velocity.py`：实现相对单位位移、`object_scale_per_frame/second` 速度诊断、速度变化和点相对对象中位速度残差；不声称 m/s。
+- `src/semantic3d/dynamic_3d/structure_temporal_residual.py`：沿固定边计算原始/尺度归一化边长变化，并保留异常点和边 ID；缺边为 NaN。
+- `src/semantic3d/dynamic_3d/object_dynamic_aggregation.py`：以 median、trimmed mean 和 top-k mean 汇聚有效点/边证据，同时保留定位结果，不生成视频真假分数。
+- `scripts/run_real_object_dynamic_3d_smoke.py`：只读取 P3-0.5 shared geometry cache、P3-0.6 readiness 和已有全局关联 observation，在对象 bbox 内运行独立 KLT 并输出对象绑定、结构图、历史预测和 P3-B 诊断。
+- `tests/test_object_track_binding.py`：验证稳定归属、对象切换拒绝、assignment lost 和显式背景点。
+- `tests/test_dynamic_motion_model.py`：验证常速度、leave-one-point-out、目标帧信息隔离和 rotation-only bearing 预测。
+- `tests/test_p3b_dynamic_residuals.py`：验证匀速、转向、整体加速、局部点跳变、人体骨段稳定/伸缩、rotation-only、unavailable 和缺边 NaN。
+- `tests/test_real_object_dynamic_3d_smoke.py`：验证 cache-only 真实 runner、规定输出、不实例化几何模型和来源复用。
+
+### 修改文件
+- `src/semantic3d/dynamic_3d/reprojection_residual.py`：正式前景重投影新增 motion model type、历史帧和支持点 provenance；严格路径拒绝当前帧泄漏，旧 P3-A 外部历史预测调用继续兼容。
+- `src/semantic3d/dynamic_3d/__init__.py`：统一导出 P3-A.5/P3-B API。
+- `src/semantic3d/__init__.py`：延迟导出新增公共 API，保留旧接口。
+- `tests/test_dynamic_reprojection_residual.py`：增加严格历史元数据的当前帧泄漏拒绝测试。
+- `docs/DEV_LOG.md`：追加本记录。
+
+### 删除文件
+- 无
+
+### 主要变化
+- 同一 point ID 不能静默从一个 `object_track_id` 切到另一个对象；发生切换时整条绑定 invalid，离开对象区域时该帧为 `assignment_lost`。普通 bbox 边缘只获得低质量边界角色，默认不进入正式内部结构残差。
+- 稳定点筛选要求轨迹长度、tracking/depth quality、assignment consistency、遮挡比例和三维跳变均可接受。真实 smoke 当前没有实例 mask，因此来源如实记录为 `shrunk_bbox` 或 `bbox_fallback`。
+- 历史预测只消费目标帧之前的样本。点模型使用 `t-2,t-1`，对象模型使用其他支持点的历史中位位移并执行 leave-one-point-out；当前 `observed_uv_t` 只用于最终比较。
+- `static_camera_3d` 允许 camera-gauge 共享尺度方向、相对速度、结构和对象运动重投影；`rotation_compensated` 只允许补偿 bearing/angular 与 rotation-only 重投影，不输出完整三维速度和结构；`unavailable` 正式证据均为 NaN。
+- 速度单位为 `object_scale_per_frame` 或 `object_scale_per_second`，不是 m/s。速度大本身只是诊断，只有相对历史或对象整体不一致才形成残差。
+- 结构边在参考帧固定，后续沿相同 point ID 计算；人体骨段长度与普通刚体固定边分别标记。缺点、缺尺度和缺边不写成 0。
+- 动态重投影正式证据严格要求对象归属、至少两个先前历史时刻、历史运动模型、独立当前 tracker 观测和当前相机几何。背景 QA、前景诊断与正式异常证据继续分离。
+
+### 合成真值结果
+- 刚性对象匀速平移时方向残差和尺度归一化速度变化接近 0。
+- 突然转向时 `1-cos` 方向残差大于 `0.9`。
+- 整体加速提高速度变化残差，但固定结构边残差保持接近 0。
+- 单点局部跳变提高相邻固定边残差，并定位到对应 point ID 和 edge ID。
+- 人体整体关节运动且骨段长度稳定时结构残差接近 0；骨段异常伸缩时残差大于 `0.9`。
+- 对象归属切换不会生成连续正式轨迹；点离开 bbox 产生 `assignment_lost`；缺边、rotation-only 完整速度和 unavailable 模式均保持 invalid + NaN。
+- 对目标帧观测进行任意跳变不会改变由历史生成的预测，确认当前帧信息未进入预测模型。
+
+### 真实动态 smoke
+- `static_camera`（`real_3`）：72 个对象绑定点，14 个点同时通过归属、轨迹和有效三维深度筛选；mask=0、shrunk bbox=61、普通 bbox fallback=11，平均绑定持续 `7.90278` 帧；3 个对象具备至少 3 帧二维归属历史。cup/table 的 46 个长二维轨迹在后续帧缺少有效深度，person 又没有语义关键点，因此没有对象建立可信固定结构图；正式方向=84、速度变化=84、结构帧证据=0、动态重投影=84。
+- `clearly_moving_camera`（`real_1`）：50 个对象绑定点，48 个稳定点；mask=0、shrunk bbox=49、普通 bbox fallback=1，平均绑定持续 `8.0` 帧；3 个对象具备至少 3 帧历史；rotation-compensated 正式 bearing direction=280、rotation-only 动态重投影=288，完整三维速度=0、结构残差=0。
+- `slowly_moving_camera`（`real_2`）：模式继续为 `unavailable`。现有全局关联 observation 的前 8 帧没有检测对象，因此绑定点和所有正式证据均为 0 条；无证据未解释为低异常分数。
+- 相比 P3-A 的真实正式动态重投影证据 0 条，本轮 real_3 和 real_1 分别增加到 84 和 288 条。它们是无阈值对象运动一致性证据，不是伪造分类结论。
+- 输出位于 `outputs/real_object_dynamic_3d_smoke/<clip_id>/`，包含对象绑定 CSV、固定结构图 JSON、历史预测、方向、相对速度、结构、动态重投影、对象汇总、诊断图和 smoke report。
+
+### 验证命令
+```bash
+.venv/bin/python scripts/run_real_object_dynamic_3d_smoke.py
+
+.venv/bin/python -m pytest \
+  tests/test_dynamic_3d_readiness.py \
+  tests/test_point_track_3d.py \
+  tests/test_track_3d_residual.py \
+  tests/test_dynamic_reprojection_residual.py \
+  tests/test_object_track_binding.py \
+  tests/test_dynamic_motion_model.py \
+  tests/test_p3b_dynamic_residuals.py \
+  tests/test_real_dynamic_3d_smoke.py \
+  tests/test_real_object_dynamic_3d_smoke.py -q
+
+.venv/bin/python -m pytest -q
+sha256sum configs/scale_priors_strict_v1.yaml configs/scale_priors_strict_v2.yaml
+git diff --check
+```
+
+### 验证结果
+- P3 动态专项：`51 passed in 5.03s`。
+- 全量：`350 passed in 96.11s`；仅有一条既有 CUDA 驱动版本警告，CPU 路径不受影响。
+- strict v1 SHA-256 保持 `e86466e19fe3e1663fa855fdf73843cf7ab8b5b6c8fa8771aa46172f6b726a6b`。
+- strict v2 SHA-256 保持 `3c55c8eb42e19d2447b00794085d8e6fa233c37a2071ef51f23b447d23ef268b`。
+- `.gitignore` 继续忽略 `outputs/`、`checkpoints/` 和 `*.mp4`。本轮未修改二维、2.5D、静态 3D、P3-0 至 P3-A 的既有实验结论。
+- `git diff --check` 对本轮新增 Python/Markdown 无格式错误；命令仍报告用户此前修改的两个 manifest CSV 使用 CRLF 行尾，本轮未改动这些文件。
+
+### 当前限制
+- 三个真实 smoke 仍是 8 帧正常片段，不支持真假分类、阈值、AUC/F1 或泛化结论。
+- 当前真实点归属完全依赖 bbox，mask binding 数量为 0；普通 bbox 无法可靠表达遮挡边界、前后景层次或可见区域，正式点质量仍有限。
+- real_3 是静止相机 camera gauge 的序列相对三维，不是米制世界轨迹；相对速度不能解释为 m/s。
+- real_1 的 rotation-only 结果是补偿 bearing/angular 与图像重投影，不是完整三维平移、世界位移或速度。
+- real_2 同时缺少可用动态几何和前 8 帧对象检测，严格保持拒绝。
+- 普通对象结构图使用固定 kNN；人体只有在已有确定语义关键点时才建立语义骨架。当前真实 KLT 人体点不能冒充语义关节。
+- 当前对象尺度来自同一共享相对三维点集的参考帧工程尺度，只用于内部归一化，不是公制语义尺度。
+
+### 下一步计划
+- 可以进入 P3-C 的数据契约、合成真值和受控 smoke，复用现有 point identity、object binding、fixed edge、visibility 和 validity 结构。
+- 尚不能直接形成可信真实遮挡结论。进入真实 P3-C 前应优先接入实例 mask 或可靠 tracked mask，明确前后景层次、边界穿越、显隐状态和重新出现身份一致性。
+- P3-C 必须继续保持模式授权和 NaN 规则，遮挡/显隐证据与本轮方向、速度、结构、重投影证据分开，不在当前三个正常片段上调整异常阈值。
+
+## 2026-07-21 - P3-C0 Instance Visibility Layer and P3-C Occlusion Evidence
+
+### 目的
+在 P3-A.5/P3-B 的共享对象轨迹和动态几何模式上，建立实例 mask、历史支撑预测、可见性状态、稀疏遮挡关系、遮挡深度顺序、显隐解释、遮挡边界和重新出现的数据契约。本阶段只完成接口、合成真值和真实正常短片段 smoke；不执行真假分类、融合训练、AUC/F1、阈值调节，也不把漏检、bbox 重叠、几何失败或 scene cut 当作伪造证据。
+
+### 新增文件
+- `src/semantic3d/occlusion/__init__.py`：统一导出 P3-C0/P3-C 公共接口。
+- `src/semantic3d/occlusion/mask_observation.py`：定义可见/非模态 mask、独立边界、历史预测支撑域和 tracked mask 契约；缺失数据使用 `None/NaN + valid=false`。
+- `src/semantic3d/occlusion/mask_provider.py`：定义 canonical mask provider，以及 synthetic、mock、已有 artifact 适配器和不下载模型的真实 provider 接口。
+- `src/semantic3d/occlusion/mask_tracking.py`：用对象历史预测或独立光流/点 warp 传播 mask，并以当前独立 mask 做 IoU 和边界验证。
+- `src/semantic3d/occlusion/support_prediction.py`：只使用目标帧之前的两帧 mask 预测当前支撑；明确限制 static、rotation、full SE3 和 unavailable 模式。
+- `src/semantic3d/occlusion/visibility_state.py`：区分 fully/partially occluded、out-of-frame、detector missing、reappeared、scene cut 和 uncertain。
+- `src/semantic3d/occlusion/occlusion_graph.py`：只为历史预测支撑发生重叠的对象建立稀疏候选关系，不生成完整 n×n 矩阵。
+- `src/semantic3d/occlusion/depth_order_residual.py`：实现前景 Z 小于背景 Z 的顺序证据；对象中心深度明确标记为低质量来源。
+- `src/semantic3d/occlusion/visibility_residual.py`：区分可解释遮挡/出画、检测不确定和无解释消失/出现；只有后两者可形成正式候选。
+- `src/semantic3d/occlusion/boundary_occlusion_residual.py`：比较历史预测和当前独立观测的对象接触边界；bbox 边界不进入正式证据。
+- `src/semantic3d/occlusion/reappearance.py`：以语义、外观、结构、相对深度和运动方向多线索保守验证重现身份，并禁止 scene cut 跨越关联。
+- `scripts/run_real_occlusion_observation_smoke.py`：只读取 P3-0.5 shared geometry cache、P3-0.6 readiness 和已有全局对象 observation，输出规定的 mask、状态、关系、残差、诊断图和报告。
+- `tests/synthetic_occlusion.py`：登记正常遮挡、深度反转、部分/完全遮挡、出画、漏检、无解释显隐、交叉运动、错误 re-id、rotation-only、scene cut、缺 mask 和 bbox-only 等 A-N 场景。
+- `tests/test_occlusion_masks.py`：验证 mask 契约、尺寸、bbox 降级、历史隔离、光流/点 warp、模式限制和完整合成场景目录。
+- `tests/test_occlusion_residuals.py`：验证深度顺序、显隐状态、边界、reappearance、scene cut、检测漏失和 unavailable 的 NaN 语义。
+- `tests/test_real_occlusion_observation_smoke.py`：验证真实 cache-only runner、不调用几何估计器、bbox 不产生正式证据、real_2 拒绝和冻结配置哈希。
+
+### 修改文件
+- `src/semantic3d/__init__.py`：延迟导出 P3-C0/P3-C 公共 API，保留已有接口。
+- `docs/DEV_LOG.md`：追加本记录。
+
+### 删除文件
+- 无
+
+### 主要变化
+- `InstanceMaskObservation` 的 visible mask 与 amodal mask 必须显式二选一。当前可见轮廓不会被命名为完整对象轮廓；没有 mask 时不制造高质量 bbox mask。
+- `ExistingDetectionMaskAdapter` 可以生成 bbox fallback，但 confidence 上限为 `0.25`，并记录 `legacy_bbox_fallback=true`、`formal_mask_evidence=false`。该路径只用于观察流程是否连通。
+- 当前目标帧 mask 只用于 IoU/边界验证，不进入同帧支撑预测。历史预测保存 `current_frame_used_for_prediction=false` 和具体历史帧。
+- `full_se3_3d` 没有外部三维投影支撑时直接 missing；`rotation_compensated` 只允许旋转补偿或二维历史运动；`unavailable` 不产生正式支撑或残差。
+- 序列起点和历史不足默认是 `uncertain`，不会自动写成 unexplained appearance。合成异常必须显式声明“无历史出现是待检事件”。
+- detector missing 不等于 fully occluded；out-of-frame 由预测支撑的画内比例判断；scene cut 会清空状态和 mask 历史。
+- 只有历史支撑重叠才建立遮挡候选；bbox overlap 关系保持 invalid。缺 mask、深度不确定、边界不足和 re-id 不确定均使用 NaN，不用 0 表示无证据。
+- 遮挡图和残差继续复用 `Shared3DClipObservation` 的 aligned relative depth、K、pose 及 P3 readiness；脚本不重新估计 depth/K/pose，也不下载或训练实例分割模型。
+
+### 合成验证结果
+- 正常前景遮挡的深度顺序残差为 `0`；交换前后深度后残差明显大于 `0.5`。
+- partial 与 full occlusion 状态可区分；正常出画和低置信检测漏失不生成正式异常残差。
+- 显式无解释消失/出现产生正式高残差；序列起点默认不产生无解释出现。
+- 正常多线索 reappearance 残差低；错误语义身份、scene cut 和低多线索质量均被拒绝并保持 NaN。
+- bbox-only 关系无法形成正式遮挡边、深度顺序或边界残差；unavailable 模式即使有当前 mask 也保持 invalid + NaN。
+- 目标帧 mask 改变只影响最终验证 IoU，不改变历史生成的 predicted support，确认无当前帧 mask 泄漏。
+
+### 真实 mask smoke
+- `static_camera`（`real_3`）：24 个对象 mask 记录全部来自 bbox fallback；诊断 mask 有效率 `100%`、正式 mask 有效率 `0%`。18 个历史验证结果的 mean IoU=`0.989606`，mean boundary distance=`3.91963 px`；状态为 scene_cut=3、uncertain=3、fully_visible=18；候选重叠关系=6，全部因 bbox-only 无效；正式 depth-order/visibility/boundary/reappearance 均为 0 条。
+- `clearly_moving_camera`（`real_1`）：24 个对象 mask 记录全部来自 bbox fallback；诊断 mask 有效率 `100%`、正式 mask 有效率 `0%`。18 个历史验证结果的 mean IoU=`0.989749`，mean boundary distance=`1.32760 px`；状态为 scene_cut=3、uncertain=3、fully_visible=18；候选重叠关系=12，全部因 bbox-only 无效；正式 depth-order/visibility/boundary/reappearance 均为 0 条。
+- `slowly_moving_camera`（`real_2`）：readiness=`unavailable`，对应 8 帧没有检测对象；mask 记录=0、候选关系=0、所有正式证据=0 条。无证据未解释为正常残差 0。
+- 三段均未发现可声明的 partial/full occlusion 或 reappearance。当前输出验证了接口和拒绝逻辑，不构成真实遮挡检测性能结论。
+- 输出位于 `outputs/real_occlusion_observation_smoke/<clip_id>/`，每段包含 `instance_masks.json`、`tracked_masks.json`、`visibility_states.csv`、`predicted_support_masks.json`、四类关系/残差 CSV、reappearance CSV、诊断图和 smoke report。
+
+### 验证命令
+```bash
+.venv/bin/python scripts/run_real_occlusion_observation_smoke.py
+
+.venv/bin/python -m pytest \
+  tests/test_occlusion_masks.py \
+  tests/test_occlusion_residuals.py \
+  tests/test_real_occlusion_observation_smoke.py \
+  tests/test_object_track_binding.py \
+  tests/test_dynamic_motion_model.py \
+  tests/test_p3b_dynamic_residuals.py \
+  tests/test_dynamic_reprojection_residual.py \
+  tests/test_real_object_dynamic_3d_smoke.py -q
+
+.venv/bin/python -m pytest -q
+sha256sum configs/scale_priors_strict_v1.yaml configs/scale_priors_strict_v2.yaml
+git diff --check -- src/semantic3d/occlusion scripts/run_real_occlusion_observation_smoke.py tests/test_occlusion_masks.py tests/test_occlusion_residuals.py tests/test_real_occlusion_observation_smoke.py
+```
+
+### 验证结果
+- P3-C 与前序动态模块联合专项：`52 passed in 5.08s`。
+- P3-C 专项：`26 passed in 3.10s`。
+- 全量：`376 passed in 105.40s`；仅有一条既有 CUDA 驱动版本警告，CPU 路径不受影响。
+- real_1/real_3 的 invalid depth-order、visibility 和 boundary CSV 行全部保持 NaN；real_2 空证据 CSV 只保留表头。
+- strict v1 SHA-256 保持 `e86466e19fe3e1663fa855fdf73843cf7ab8b5b6c8fa8771aa46172f6b726a6b`。
+- strict v2 SHA-256 保持 `3c55c8eb42e19d2447b00794085d8e6fa233c37a2071ef51f23b447d23ef268b`。
+- `.gitignore` 继续保护 `outputs/`、`checkpoints/` 和视频/模型权重；未修改任何冻结先验或已有实验数值。
+
+### 当前限制
+- 真实 observation 尚无实例分割 artifact；real_1/real_3 的 100%“mask 有效”只指 bbox 诊断可用，正式实例 mask 有效率实际为 0%。IoU 和边界距离因此不能解释为真实轮廓跟踪性能。
+- 没有冻结的真实实例分割模型、amodal mask 或跨遮挡 mask propagation 模型；`RealInstanceMaskProvider` 当前只是外部 callback 接口，不会自动下载模型。
+- 真实候选关系完全来自 bbox 历史支撑重叠，均被正确拒绝。当前无法据此判断真实遮挡深度顺序、边界异常或显隐伪造。
+- 深度顺序目前使用共享相对深度的对象区域中位数，明确是低质量中心深度；尚未实现遮挡边界两侧的高质量局部深度采样。
+- full SE3 mask 投影只有接口，没有真实三维对象体积；real_1 仍是 rotation-only，real_2 仍 unavailable。
+- reappearance 需要可靠外观/结构/深度/运动多线索；当前真实 smoke 不提供这些输入，因此没有正式 re-id 证据。
+- 三段 8 帧正常片段不支持真假分类、阈值、AUC/F1 或泛化结论。
+
+### 下一步计划
+- 在不使用真假标签的前提下，接入冻结且版本可追溯的真实实例分割 provider，保存真实 visible mask、模型版本、置信度和检测来源，并重新统计正式 mask 覆盖率。
+- 使用独立点轨迹/光流传播历史 mask，验证当前 segmentation 仅用于同帧校验；增加明确包含 partial/full occlusion 和重现事件的独立真实片段。
+- 在真实高质量 mask 和边界局部深度就绪前，不进入正式三维遮挡片段级聚合或定位性能实验。当前仅可进入该聚合器的接口与合成真值设计。
+- 后续仍需保持 static/rotation/full-SE3/unavailable 分级、scene-cut 隔离和 NaN 规则，且不得在当前六视频上调遮挡阈值。
+
+## 2026-07-21 - P3-D Real Segmentation, Human Keypoints, and Evidence Coverage
+
+### 目的
+在 P3-C 遮挡契约基础上，接入本地冻结实例分割 provider、分割实例与既有对象轨迹的一对一关联、真实人体语义关键点与共享深度三维反投影、固定人体骨架，以及不使用真假标签和残差大小的真实证据片段筛选。本阶段只统计观测与结构证据覆盖，不进行融合、真假分类、AUC/F1 或阈值调节；缺少实例分割权重时不联网、不使用 bbox 冒充正式 mask。
+
+### 新增文件
+- `src/semantic3d/occlusion/mask_object_association.py`：定义分割候选与 `ObjectObservationJSON/object_track_id` 的一对一关联，综合同源 detection ID、语义类别、mask/bbox IoU、中心距离、containment 和置信度，并保留所有候选及拒绝原因。
+- `src/semantic3d/occlusion/scene_cut_statistics.py`：提供 `scene_cut_statistics_v2`，分离真实 clip cut、对象级 scene-cut marker、首帧 track 初始化和状态机边界 marker。
+- `src/semantic3d/dynamic_3d/person_keypoint_binding.py`：将标准 COCO 人体关键点绑定到稳定 person track，以 `track_id:keypoint:name` 保持左右语义身份，逐点保存 invalid，并复用 shared depth/K/pose 生成三维关键点。
+- `scripts/find_real_3d_evidence_clips.py`：仅按观测可用性和事件类型筛选 person structure、mask overlap、partial/full occlusion/reappearance、out-of-frame 和 stable multi-object 候选；拒绝带 truth label 或 residual 字段的输入。
+- `scripts/run_real_3d_evidence_coverage.py`：运行真实 mask、关联、人体关键点、固定结构图、结构时序、可见性和遮挡 coverage，并生成规定 CSV、JSON 和诊断图。
+- `tests/test_real_instance_mask_provider.py`：验证缺失权重错误、真实可见 mask、非 bbox 实心区域和 visible/amodal 标志。
+- `tests/test_mask_object_association.py`：验证一对一关联、类别冲突拒绝、同源 detection ID 优先和候选拒绝原因。
+- `tests/test_real_mask_tracking.py`：验证 observed/predicted mask 分离、面积变化、assignment consistency 和 scene-cut 禁止传播。
+- `tests/test_person_keypoint_object_binding.py`：验证关键点绑定 person track、稳定左右身份和低置信点逐点 invalid。
+- `tests/test_person_structure_graph_real_path.py`：验证固定人体骨架只使用持续有效的语义关节点，缺失关节只移除相关边。
+- `tests/test_real_evidence_clip_finder.py`：验证无事件返回空候选，且筛选器拒绝 truth label/residual 输入。
+- `tests/test_scene_cut_statistics.py`：验证真实 cut 按帧边界唯一计数，首帧初始化不计为真实 cut。
+- `tests/test_real_3d_evidence_coverage.py`：验证真实 coverage 输出、缺失分割权重语义、无标签筛选和冻结先验哈希。
+
+### 修改文件
+- `src/semantic3d/occlusion/mask_provider.py`：实现本地冻结 Ultralytics 实例分割路径和 `InstanceMaskCandidate`；仅加载显式权重路径，不静默下载，缺失时返回明确 missing reason。
+- `src/semantic3d/occlusion/mask_observation.py`：为 tracked mask 增加 independent observed/history predicted 别名、area change ratio 和 assignment consistency。
+- `src/semantic3d/occlusion/mask_tracking.py`：继续保证当前 mask 只参与验证，并保留独立 warp、对象动态、相机运动和历史模型 provenance。
+- `src/semantic3d/occlusion/visibility_state.py`：无 mask、scene cut、unavailable、历史不足和 detector missing 的不可观测面积/比例改为 NaN，不再用 0 占位。
+- `src/semantic3d/occlusion/visibility_residual.py`：没有有效 visibility observation 时 diagnostic/formal evidence 均为 invalid + NaN；legacy bbox 诊断仍保留但不能升级为正式证据。
+- `src/semantic3d/occlusion/occlusion_graph.py`：明确区分 `no_occlusion_event` 与 `occlusion_observation_missing`。
+- `src/semantic3d/occlusion/__init__.py`、`src/semantic3d/dynamic_3d/__init__.py`、`src/semantic3d/__init__.py`：导出 P3-D 公共 API。
+- `scripts/run_real_occlusion_observation_smoke.py`：允许注入真实 mask provider；新增 versioned scene-cut 统计并保留 legacy 状态计数。
+- `tests/test_occlusion_residuals.py`：增加缺失 visibility 的 NaN diagnostic 检查。
+- `docs/DEV_LOG.md`：追加本记录。
+
+### 删除文件
+- 无
+
+### 主要变化
+- `RealInstanceMaskProvider` 默认只查找 `checkpoints/yolov8n-seg.pt`。本地文件不存在时 `available=false`，missing reason 为 `real_instance_segmentation_weights_missing`；不会将 `yolov8n.pt` 检测权重误用为实例分割，也不会触发网络下载。
+- 模型可用时先生成未关联 visible mask candidate，记录 model name/version、class id/name、confidence、source detection ID、device 和 preprocessing metadata；模型没有 amodal 输出，因此 `is_visible_mask=true`、`is_amodal_mask=false`。
+- mask-object 关联先执行类别兼容检查，再做一对一最高质量分配；同源 detection ID 在兼容候选中优先。失败对象保持 invalid，不生成 bbox mask。
+- 当前帧独立 segmentation、历史 predicted support 和可选 flow/point warp 保持三个来源；当前 observed mask 只用于 IoU、边界和面积变化验证，不参与同帧预测。scene cut 清空历史。
+- `RealHumanKeypointProvider` 使用本地 `checkpoints/yolov8n-pose.pt`。17 个 COCO 关键点逐点门控，左右语义名称固定；坐姿、弯身或下肢低置信只影响对应点和骨架边，不自动形成异常。
+- 人体关键点通过既有 `reconstruct_point_tracks_3d` 复用 shared aligned relative depth、K 和 readiness；不重新估计深度、内参或位姿。静止相机模式可建立固定三维骨架，rotation-only 不输出完整三维结构图。
+- 普通对象只有真实 instance mask 内部、远离边界且具有稳定 point ID 的点可以建立正式固定结构图。bbox 内部点只保留对照统计；本轮因真实 mask 为 0，普通对象正式结构图为 0。
+- clip finder 不接收真假标签或 residual 字段，只依据关键点/mask 覆盖、遮挡状态、重叠持续时间、深度顺序质量、scene cut 和 geometry mode。无真实事件时返回空候选。
+- `scene_cut_statistics_v2` 显示 real_1/real_3 的真实 clip cut 均为 0。旧 `scene_cut=3` 是首帧三个对象被标成状态机边界的 legacy 计数，不是三次镜头切换；新字段记录 `track_initialization_markers=3`、`state_machine_boundary_markers=3`、`object_visibility_scene_cut_markers=0`。
+- 无 mask、无关键点、无结构边、无事件、事件观测失败和 geometry unavailable 均通过 valid/quality/missing_reason/NaN 区分，不使用 0 表示缺失证据。
+
+### 真实 coverage 结果
+- 本地实例分割权重不存在：`RealInstanceMaskProvider available=false`，明确要求将冻结权重放到 `checkpoints/yolov8n-seg.pt`。三个片段正式 mask 总数为 0。
+- P3-D 正式路径禁用了 bbox fallback，因此 real_1/real_3 的 bbox fallback ratio 为 0；这表示没有使用 fallback，不表示真实 mask 覆盖提升。正式 mask ratio 和 mask-object association success ratio仍为 0。
+- `real_3/static_camera`：8 帧均检测 person，真实 pose 每帧有效 12-13/17 个关键点，平均 keypoint valid ratio=`0.742647`，有效关键点样本总数=101；形成 1 个正式 `semantic_human_skeleton`，包含 12 个持续三维点和 8 条固定边，graph quality=`0.697688`，产生 7 帧正式结构时序证据。
+- real_3 的低置信膝/踝等点逐点 invalid；可用肩、肘、腕、髋等边仍形成骨架。人体坐姿没有被自动视为异常，本轮只统计覆盖。
+- `real_1/rotation_compensated` 的对象为 mouse、remote、dining_table，没有 person；完整人体结构图为 0。`real_2/unavailable` 前 8 帧无检测对象，所有覆盖为 NaN 或 0 个事件，而非低异常分数。
+- 普通对象真实 mask 内部结构图=0，mask internal point=0；原因是缺少真实实例分割权重，不是结构残差为零。
+- partial occlusion 候选=0、full occlusion/reappearance 候选=0、正式遮挡证据=0、正式 reappearance=0。没有为产生分数降低 mask 门控。
+- observation-only finder 找到 1 个候选：real_3 frame 0-7 的 `person_structure`；没有找到 mask overlap、partial/full occlusion、out-of-frame 或 stable multi-object mask 片段。
+- 输出位于 `outputs/real_3d_evidence_coverage/`，包括 `mask_coverage.csv`、`mask_object_association.csv`、`keypoint_coverage.csv`、`structure_graph_coverage.csv`、`visibility_event_coverage.csv`、`occlusion_evidence_coverage.csv`、`per_video_summary.csv`、`global_summary.json`、候选 clip CSV、frame availability JSON 和诊断图。
+
+### 验证命令
+```bash
+.venv/bin/python scripts/run_real_3d_evidence_coverage.py
+
+.venv/bin/python -m pytest \
+  tests/test_real_instance_mask_provider.py \
+  tests/test_mask_object_association.py \
+  tests/test_real_mask_tracking.py \
+  tests/test_person_keypoint_object_binding.py \
+  tests/test_person_structure_graph_real_path.py \
+  tests/test_real_evidence_clip_finder.py \
+  tests/test_scene_cut_statistics.py \
+  tests/test_real_3d_evidence_coverage.py -q
+
+.venv/bin/python -m pytest -q
+sha256sum configs/scale_priors_strict_v1.yaml configs/scale_priors_strict_v2.yaml
+git diff --check -- src/semantic3d/occlusion src/semantic3d/dynamic_3d/person_keypoint_binding.py scripts/find_real_3d_evidence_clips.py scripts/run_real_3d_evidence_coverage.py tests/test_real_instance_mask_provider.py tests/test_mask_object_association.py tests/test_real_mask_tracking.py tests/test_person_keypoint_object_binding.py tests/test_person_structure_graph_real_path.py tests/test_real_evidence_clip_finder.py tests/test_scene_cut_statistics.py tests/test_real_3d_evidence_coverage.py docs/DEV_LOG.md
+```
+
+### 验证结果
+- 初始 P3-D 八组专项：`14 passed in 7.25s`；补充同源 detection ID 优先测试后新增测试总数为 15。
+- P3-D/P3-C/P3-B 联合专项：`48 passed in 6.80s`。
+- 全量最终结果：`391 passed in 99.15s`；仅有一条既有 CUDA 驱动版本警告，CPU 推理路径不受影响。
+- strict v1 SHA-256 保持 `e86466e19fe3e1663fa855fdf73843cf7ab8b5b6c8fa8771aa46172f6b726a6b`。
+- strict v2 SHA-256 保持 `3c55c8eb42e19d2447b00794085d8e6fa233c37a2071ef51f23b447d23ef268b`。
+- P3-D 输出中 invalid 遮挡 residual 全部为 NaN；`.gitignore` 继续保护 `outputs/`、`checkpoints/`、视频和模型权重。
+
+### 当前限制
+- `checkpoints/yolov8n-seg.pt` 尚不存在，因此真实实例 mask 有效率和 mask-object 关联成功率仍为 0；不能评价真实分割质量或遮挡性能。
+- bbox fallback ratio 从 P3-C 的 100% 变为 P3-D 的 0% 是因为正式路径完全禁用了 fallback，不是因为真实分割已经替换成功。
+- real_3 只有一个坐姿 person track。其上半身骨架覆盖验证了工程链路，但不能代表不同姿态、多人交互、遮挡或快速运动场景。
+- 人体关键点深度是逐点 shared relative depth 采样，不是公制三维关节；相机仍使用 approximate K。
+- 普通对象尚无 mask internal stable points、固定结构图或结构时序证据。
+- 当前三个短片段没有真实 partial/full occlusion、out-of-frame 或 reappearance 候选，无法验证正式遮挡残差在真实事件上的行为。
+- `RealInstanceMaskProvider` 已支持本地 Ultralytics segmentation 权重，但没有在本轮自动下载；模型版本、许可、来源和冻结哈希需在放入权重后单独记录。
+- 真实 evidence coverage 只覆盖 real_1/real_2/real_3 的现有 8 帧 P3 shared clips，不是完整数据集性能实验。
+
+### 下一步计划
+- 准备来源和版本可追溯的本地 `yolov8n-seg.pt` 或等价冻结实例分割权重，放入 `checkpoints/` 后重新运行 coverage，首先验证 mask 非 bbox、关联一对一、正式 mask 覆盖和 tracked mask 稳定性。
+- 采集或筛选不依赖真假标签的真实多人交互/遮挡片段，覆盖 partial、full occlusion、out-of-frame 和 reappearance；仍只按事件与观测质量筛选。
+- 实例 mask 到位后，为 cup/table/car 等普通对象统计 mask internal/boundary/bbox point 来源，并验证固定结构图和缺边 NaN。
+- 当前仅 real_3 人体结构分支具备进入质量感知聚合接口设计的观测基础；整个 P4 真实多分支聚合仍不具备条件，至少需补齐正式 mask、普通对象结构和真实遮挡事件覆盖。
+## 2026-07-21 - P3-D.1 Full-Video Evidence Coverage and P4-A Contracts
+
+### 目的
+
+在 P3-D 三片段 smoke 之后启用可审计的冻结实例分割路径，扫描六个完整测试视频，并建立只表示观测覆盖率的 `CoverageReadiness`。同时建立 P4-A 分层证据聚合数据契约和合成验证，不进行真假分类、AUC/F1、阈值优化或真实视频异常性能评价。
+
+### 新增文件
+
+- `src/semantic3d/occlusion/mask_structure_points.py`：只在正式可见实例 mask 的收缩内部选择和跟踪普通对象稳定点；bbox fallback 明确返回空正式点集。
+- `src/semantic3d/occlusion/event_validation.py`：正式 partial/full occlusion 事件门控，要求 mask、历史预测、可见面积变化、遮挡对象、深度次序、非 scene cut 和 tracking 质量同时成立。
+- `src/semantic3d/coverage_readiness.py`：定义 coverage-only readiness，并区分 `not_applicable` 与 `observation_missing`。
+- `src/semantic3d/aggregation_v2/contracts.py`：定义 point、edge、object、frame、clip 五级 evidence aggregate。
+- `src/semantic3d/aggregation_v2/aggregation.py`：实现 quality-aware top-k、median 和 trimmed mean 聚合，保留 NaN、valid、quality、coverage 和来源。
+- `src/semantic3d/aggregation_v2/__init__.py`：导出 P4-A 数据接口。
+- `scripts/run_real_3d_evidence_coverage_v2.py`：六视频全帧实例 mask、关联、mask tracking、结构覆盖、事件筛选和 readiness 执行器。
+- `tests/test_mask_internal_structure_points.py`：验证正式 mask 内点与当前帧 mask 无预测泄漏。
+- `tests/test_coverage_readiness.py`：验证无事件和观测失败语义隔离。
+- `tests/test_aggregation_v2.py`：验证 P4-A 的 NaN、quality、top-k、median、trimmed mean 与可追溯性。
+- `tests/test_real_3d_evidence_coverage_v2.py`：验证缺失权重时仍生成完整报告、不得联网或 bbox 降级，以及 strict prior 哈希冻结。
+
+### 修改文件
+
+- `src/semantic3d/occlusion/mask_provider.py`：增加权重可读性、文件大小、SHA-256、模型任务、Ultralytics 版本和真实 mask 输出校验；检测模型权重不能进入正式分割路径。
+- `src/semantic3d/occlusion/mask_object_association.py`：将分割权重哈希传播到正式 mask provenance。
+- `src/semantic3d/occlusion/__init__.py`、`src/semantic3d/__init__.py`：导出新增 provider metadata、mask 内点、readiness 和 aggregation API。
+- `scripts/find_real_3d_evidence_clips.py`：扩展 full-video 事件类型，并拒绝 truth label、异常分数和残差字段作为筛选输入。
+- `tests/test_real_instance_mask_provider.py`：增加权重哈希、mask 输出和 detection-task 拒绝测试。
+- `tests/test_real_evidence_clip_finder.py`：增加异常分数字段拒绝和全视频观测事件筛选测试。
+
+### 删除文件
+
+- 无。
+
+### 主要变化
+
+- 实例分割运行时不会自动联网下载；缺少权重时统一记录 `instance_segmentation_weights_missing`。
+- 仅 `task=segment` 且实际推理结果包含 mask 的本地模型可以产生正式 mask；检测输出和 bbox 实心区域不能进入正式路径。
+- 全视频扫描覆盖 `real_1` 至 `real_4`、`fake_1` 和 `fake_2`，合计 984 帧，不读取真假标签或异常残差决定证据片段。
+- 普通对象可以准备 mask 内稳定 2D 点，但在没有共享三维重建时不会计为正式三维结构图或结构残差。
+- `CoverageReadiness` 不是异常分数；缺少事件是 `not_applicable`，观测链失败是 `observation_missing`。
+- 遮挡事件缺少物理事件条件时为 `not_applicable`，缺少正式 mask、历史预测或 tracking 质量时为 `observation_missing`，不会产生残差 0。
+- P4-A 聚合保留 value、valid、quality、coverage、missing reason、source IDs 和 branch names；全缺失输入输出 NaN，不输出真假结论。
+
+### 权重状态
+
+- 预期路径：`checkpoints/yolov8n-seg.pt`。
+- 本次启动时文件不存在；从 Ultralytics 官方 GitHub release 的显式下载尝试被当前 WSL 到 `github.com:443` 的网络连接阻断。
+- 未使用第三方不可信 PyTorch pickle 镜像，未生成残缺权重文件，也未将 `yolov8n.pt` 检测模型当作分割模型。
+- `model_metadata.json` 当前记录：`weights_readable=false`、`weight_sha256=""`、`output_contains_instance_masks=false`、`available=false`。
+
+### 六视频验证结果
+
+- 输出目录：`outputs/real_3d_evidence_coverage_v2/`，旧 `outputs/real_3d_evidence_coverage/` 未覆盖。
+- 视频数量：6；完整视频总帧数：984。
+- 正式实例 mask：0；稳定 mask track：0；普通对象正式三维结构图：0。
+- 现有共享三维 smoke 仍提供 `real_3` 的 1 条 person structure track 和 7 条正式结构时序证据。
+- partial/full occlusion、正式 depth-order、boundary occlusion 和 reappearance 证据均为 0。
+- `real_3` 因独立 person structure 分支达到 `ready_for_partial_p4=true`；其余视频为 false。
+- 六个视频均为 `ready_for_full_p4=false`。
+- 证据筛选器保留 1 个 `real_3` 帧 0-7 的 `person_structure` 候选；未找到 mask/遮挡/显隐候选。
+- 无真实事件候选时输出空 candidate CSV；没有降低标准制造事件。
+
+### 验证命令
+
+```bash
+.venv/bin/python -m pytest tests/test_real_instance_mask_provider.py tests/test_mask_object_association.py tests/test_real_mask_tracking.py tests/test_mask_internal_structure_points.py tests/test_person_keypoint_object_binding.py tests/test_person_structure_graph_real_path.py tests/test_real_evidence_clip_finder.py tests/test_scene_cut_statistics.py tests/test_coverage_readiness.py tests/test_aggregation_v2.py tests/test_real_3d_evidence_coverage_v2.py -q
+.venv/bin/python scripts/run_real_3d_evidence_coverage_v2.py
+.venv/bin/python -m pytest -q
+```
+
+### 验证结果
+
+- P3-D.1/P4-A 专项：`26 passed`。
+- 全量：`405 passed in 97.72s`。
+- 仅一条既有 CUDA 驱动版本警告；CPU 路径可用。
+- `configs/scale_priors_strict_v1.yaml` SHA-256 保持 `e86466e19fe3e1663fa855fdf73843cf7ab8b5b6c8fa8771aa46172f6b726a6b`。
+- `configs/scale_priors_strict_v2.yaml` SHA-256 保持 `3c55c8eb42e19d2447b00794085d8e6fa233c37a2071ef51f23b447d23ef268b`。
+
+### 当前限制
+
+- `yolov8n-seg.pt` 尚未到位，因此正式 mask、mask-object association、mask tracking、普通对象结构和遮挡分支尚未获得真实覆盖数据。
+- 六视频全扫描目前完成的是输入帧范围和缺失前置条件审计；不能把 0 个正式 mask 解释为场景没有对象或没有异常。
+- full-video 共享深度、相机几何和三维点重建尚未覆盖全部 984 帧；现有正式结构证据仍来自冻结的短片段 cache。
+- 当前没有可验证的 partial/full occlusion 或 reappearance 真实事件，不能进入 full P4。
+
+### 下一步计划
+
+- 通过可信渠道将官方冻结 `yolov8n-seg.pt` 放入 `checkpoints/`，先核验 SHA-256、模型 task 和真实 mask 输出，再重跑相同 coverage v2 命令。
+- 对筛选出的 mask tracking、普通对象结构和遮挡候选片段建立共享深度/K/pose cache，再运行 P3-B/P3-C 正式残差。
+- 只有 coverage readiness 达标后才将真实证据接入 P4-A；在此之前不做真假性能评价或阈值调优。
+
+## 2026-07-22 - P3-D.1 Local Segmentation Weight Revalidation
+
+### 目的
+
+在用户将 `yolov8n-seg.pt` 从 Windows 手动复制到 WSL 后，重新验证冻结实例分割权重、真实像素 mask 输出、六视频全帧覆盖、对象关联、mask tracking、结构证据、可见性事件和 P4 coverage readiness。本次仍不进行真实/伪造性能评价。
+
+### 新增文件
+
+- 无源码文件；本次生成的验证产物位于被 Git 忽略的 `outputs/real_3d_evidence_coverage_v2/`。
+
+### 修改文件
+
+- `docs/DEV_LOG.md`：追加本地实例分割权重到位后的可复现验证结果。
+
+### 删除文件
+
+- 无。
+
+### 权重验证
+
+- 本地路径：`checkpoints/yolov8n-seg.pt`；文件可读，大小 `7,071,756` bytes。
+- SHA-256：`a7cd8f929e1903d78a12a48efecab430209f18dc46cb96c3599a5980c63c423c`。
+- 加载结果：`model_name=yolov8n-seg`、`model_task=segment`、`ultralytics=8.4.90`、`device=cpu`。
+- `fake_1` 首帧实际输出 cup、couch 和 dining table 三个实例 mask；mask/enclosing-bbox 填充率分别约为 `0.8944`、`0.5988` 和 `0.6203`，证明正式输出不是 bbox 实心区域。
+- 推理后 `output_contains_instance_masks=true`；没有自动下载，`bbox_used_as_formal_mask=false`。
+- 权重由用户手动复制到本地；当前哈希可固定实验文件，但其下载来源与许可仍需在论文复现材料中独立登记。
+
+### 六视频验证结果
+
+- 扫描 6 个视频、共 984 帧；对象观测 2,455 个，正式可见实例 mask 1,823 个。
+- 全局 mask-object association 成功率为 `0.742566`；bbox fallback 比例为 `0`，所有正式 mask 均为 visible mask，未推断 amodal mask。
+- 各视频正式 mask 有效率：fake_1=`0.838806`、fake_2=`0.756048`、real_1=`0.159468`、real_2=`1.000000`（仅 3 个对象观测）、real_3=`0.667219`、real_4=`0.995810`。
+- 稳定 mask track 共 11 条；candidate clip 共 47 个，包括 detector-missing control 25 个、stable multi-object 14 个、stable mask tracking 7 个和 person structure 1 个。
+- 人体正式结构 track 仍为 1 条，普通对象正式三维结构 track 仍为 0，正式 structure temporal residual 共 7 条。
+- 没有找到满足严格条件的 partial/full occlusion 或 reappearance；正式 depth-order 和 boundary-occlusion evidence 仍为 0。无事件被记录为 `not_applicable`，观测链失败记录为 `observation_missing`，均未写成正常残差 0。
+- 只有 `real_3` 达到 `ready_for_partial_p4=true`；没有视频达到 `ready_for_full_p4=true`。
+
+### 验证命令
+
+```bash
+sha256sum checkpoints/yolov8n-seg.pt
+
+.venv/bin/python -m pytest \
+  tests/test_real_instance_mask_provider.py \
+  tests/test_mask_object_association.py \
+  tests/test_real_mask_tracking.py \
+  tests/test_mask_internal_structure_points.py \
+  tests/test_coverage_readiness.py \
+  tests/test_aggregation_v2.py \
+  tests/test_real_3d_evidence_coverage_v2.py -q
+
+.venv/bin/python scripts/run_real_3d_evidence_coverage_v2.py \
+  --video_root data/tests_videos \
+  --output_root outputs/real_3d_evidence_coverage_v2 \
+  --mask_model_path checkpoints/yolov8n-seg.pt \
+  --device cpu
+
+.venv/bin/python -m pytest -q
+sha256sum configs/scale_priors_strict_v1.yaml configs/scale_priors_strict_v2.yaml
+```
+
+### 验证结果
+
+- P3-D.1 实例分割/关联/tracking/readiness/P4-A 专项：`20 passed in 2.90s`。
+- 全量：`405 passed in 112.92s`。
+- 唯一警告为本机 NVIDIA 驱动与当前 PyTorch CUDA 构建不匹配；本次显式使用 CPU，结果不受该警告影响。
+- strict v1 SHA-256 保持 `e86466e19fe3e1663fa855fdf73843cf7ab8b5b6c8fa8771aa46172f6b726a6b`。
+- strict v2 SHA-256 保持 `3c55c8eb42e19d2447b00794085d8e6fa233c37a2071ef51f23b447d23ef268b`。
+
+### 当前限制
+
+- 实例分割已真实启用，但不同视频的关联覆盖差异很大，特别是 real_1 仅约 15.95%；这需要单独诊断检测/分割类别与框的一致性，不能当作低异常。
+- full-video mask tracking 已有覆盖，但普通对象 mask 内 2D 点尚未接入 full-video shared depth/K/pose 三维重建，因此普通对象正式三维结构图仍为 0。
+- 当前六视频没有被严格规则确认的 partial/full occlusion 或 reappearance，不能验证真实遮挡残差，也不能进入 full P4。
+- `real_3` 的 7 条正式结构残差仍来自已有短片段共享三维路径；不能据此代表六视频动态结构覆盖。
+- 当前结果是观测覆盖与工程闭环验证，不是伪造检测性能结论。
+
+### 下一步计划
+
+- 优先诊断 real_1 的低 mask-object association 覆盖，并保留所有候选和拒绝原因，不降低一对一匹配标准。
+- 将筛选出的稳定 mask tracks 接入 full-video shared depth、相机几何与对象三维重建，生成普通对象固定结构图和正式结构时序证据。
+- 增补或独立采集包含明确 partial/full occlusion、out-of-frame 和 reappearance 的观测覆盖视频；仅按事件与观测质量筛选。
+- 在普通对象结构与真实遮挡事件达到覆盖要求前，只能进入 partial P4 接口验证，不能开展 full P4 真实真假评价。
+
+## 2026-07-22 - P4-A.1 Partial Aggregation and P3-D.2 Coverage Funnel Audit
+
+### 目的
+
+在不进行真假分类、AUC/F1、标签驱动权重学习或阈值调优的前提下，实现部分可用正式分支的质量感知五级聚合与时空定位；同时对 11 条稳定正式 mask track 逐条审计普通对象结构覆盖漏斗，并以 8/16/24/32 帧窗口诊断真实遮挡事件形成条件。
+
+### 新增文件
+
+- `configs/partial_p4_aggregation.yaml`：显式 debug 聚合与时间定位参数；阈值不来自六视频真假结果。
+- `src/semantic3d/aggregation_v2/applicability.py`：定义五种 `EvidenceApplicability` 和完整局部证据记录。
+- `src/semantic3d/aggregation_v2/evidence_registry.py`：注册 13 个正式静态/动态分支及其几何模式、级别、事件条件、质量门槛、归一化与定位目标。
+- `src/semantic3d/aggregation_v2/hierarchy.py`：实现 point、edge、object、frame、clip 五级可追溯聚合。
+- `src/semantic3d/aggregation_v2/temporal_localization.py`：实现 causal moving median、连续高证据分组、小间隔合并和最短时长过滤。
+- `scripts/run_partial_p4_aggregation_smoke.py`：只对 `CoverageReadiness` 放行的视频运行 partial P4 聚合。
+- `scripts/audit_ordinary_object_structure_coverage.py`：逐条输出稳定 mask track 的正式结构覆盖漏斗。
+- `scripts/audit_occlusion_event_coverage.py`：从正式 mask/tracking 记录生成逐帧信号并运行多窗口遮挡诊断。
+- `tests/test_aggregation_v2_multilevel.py`：验证 applicability、六种稳健算子、五级追溯、空间定位和时间区间。
+- `tests/test_partial_p4_aggregation_smoke.py`：验证只运行 ready 输入且不消费真假标签。
+- `tests/test_structure_and_occlusion_coverage_audit.py`：验证自适应 erosion、stable track 不丢失和遮挡拒绝原因。
+
+### 修改文件
+
+- `src/semantic3d/aggregation_v2/contracts.py`：为五级 aggregate 增加 applicability 计数、top contributors、四维 coverage、对象 mask 定位和 clip 时间定位字段。
+- `src/semantic3d/aggregation_v2/aggregation.py`：新增 `median`、`trimmed_mean`、`top_k_mean`、`quality_weighted_mean`、`quality_weighted_top_k` 和 `hybrid_median_top_k`；保留 legacy `topk_mean` 兼容。
+- `src/semantic3d/aggregation_v2/__init__.py`、`src/semantic3d/__init__.py`：导出新增 P4-A.1 API。
+- `src/semantic3d/occlusion/mask_structure_points.py`：增加仅由 mask 像素尺寸决定的自适应 erosion，并支持灰度帧的低内存点跟踪审计。
+- `src/semantic3d/occlusion/__init__.py`：导出自适应 erosion API。
+- `scripts/find_real_3d_evidence_clips.py`：增加多窗口遮挡信号形成与拒绝原因输出，继续拒绝 truth label 和 anomaly score 字段。
+- `scripts/run_real_3d_evidence_coverage.py`：持久化已计算的人体对象级和固定边 structure temporal residual，避免 P4 绘图阶段重建数值。
+
+### 删除文件
+
+- 无。
+
+### 主要变化
+
+- 只有 `applicable + valid + finite + quality >= floor` 的证据进入异常值聚合；`not_applicable` 不降低覆盖，`observation_missing` 降低覆盖，`invalid_geometry` 和 `unsupported_mode` 单独计数。
+- 缺失或无事件继续使用 NaN，不写成 0。quality 是工程质量分数，不是训练概率；anomaly、quality 和 branch/object/temporal/spatial coverage 分离保存。
+- 注册表包含 13 个正式分支；diagnostic 分支必须显式 opt-in，不能自动成为正式异常证据。
+- real_3 是唯一进入 partial P4 的视频；其余五个视频均输出 `not_ready` 和 `no_formal_structure_or_occlusion_residual_branch`，没有按真假标签区别处理。
+- real_3 实际聚合 `direction_consistency`、`relative_velocity_change`、`dynamic_reprojection` 和 `structure_temporal` 四个正式分支，13 分支注册表覆盖率为 `4/13=0.307692`。
+- P3-D 的 7 个 object structure transitions 已持久化为 7 条对象 residual 和 56 条固定边 residual；P4 使用这 56 条真实 edge evidence，没有构造替代值。
+- real_3 生成 98 个 point aggregate、56 个 edge aggregate、7 个 object-frame aggregate、7 个 frame aggregate、1 个 clip aggregate；所有 7 个对象定位均引用正式 visible-mask 文件。
+- 显式 debug threshold `0.50` 下形成 1 个时间候选区间（global frame 3-7）；该区间只表示聚合 smoke 的高证据区间，不是真假判定或论文阈值。
+- 11 条稳定 mask track 全部进入漏斗且无静默丢失：11 条均足够长、均有 mask 内候选点和稳定 ID；只有 real_3 的 person/cup 两条处于 static-camera 几何模式，但 shared depth 仅覆盖约 `8/201=0.0398`，没有任何 track 达到 full-video depth 覆盖门槛。
+- 普通对象正式三维结构 graph 和 structure residual 仍为 0。其余稳定 track 的主要停止原因是 unsupported geometry mode；real_3 cup 停在 insufficient shared depth coverage；real_3 person 进入独立人体结构分支，不计作普通对象。
+- 遮挡审计生成 798 条逐帧信号并测试 410 个窗口：261 个为 `no_observable_occlusion_event`，149 个为有接触/显隐信号但被正式门控拒绝的预候选；全部窗口缺少同步正式 depth-order，正式遮挡候选仍为 0。
+
+### 验证命令
+
+```bash
+.venv/bin/python scripts/run_real_3d_evidence_coverage.py \
+  --output_root outputs/real_3d_evidence_coverage_v2/shared_3d_smoke \
+  --mask_model_path checkpoints/yolov8n-seg.pt \
+  --pose_model_path checkpoints/yolov8n-pose.pt \
+  --device cpu
+
+.venv/bin/python scripts/run_partial_p4_aggregation_smoke.py
+.venv/bin/python scripts/audit_ordinary_object_structure_coverage.py
+.venv/bin/python scripts/audit_occlusion_event_coverage.py
+
+.venv/bin/python -m pytest \
+  tests/test_aggregation_v2.py \
+  tests/test_aggregation_v2_multilevel.py \
+  tests/test_partial_p4_aggregation_smoke.py \
+  tests/test_structure_and_occlusion_coverage_audit.py \
+  tests/test_real_3d_evidence_coverage.py \
+  tests/test_real_3d_evidence_coverage_v2.py -q
+
+.venv/bin/python -m pytest -q
+sha256sum configs/scale_priors_strict_v1.yaml configs/scale_priors_strict_v2.yaml
+```
+
+### 验证结果
+
+- 聚合/覆盖专项联合回归：`46 passed in 1.76s`。
+- 最终关键专项：`19 passed in 5.24s`，仅有既有 CUDA 驱动警告。
+- 最终全量：`416 passed in 90.24s`，仅有同一条 CUDA 驱动警告；CPU 路径正常。
+- strict v1 SHA-256 保持 `e86466e19fe3e1663fa855fdf73843cf7ab8b5b6c8fa8771aa46172f6b726a6b`。
+- strict v2 SHA-256 保持 `3c55c8eb42e19d2447b00794085d8e6fa233c37a2071ef51f23b447d23ef268b`。
+
+### 当前限制
+
+- real_3 的动态 CSV 没有持久化原始 evidence quality；方向、相对速度和动态重投影暂用明确标注的保守 engineering quality=`0.50`，不是概率。structure edge 使用源码实际计算质量。
+- partial P4 只有 1 个视频、1 条 person track 和 7 个有效帧，不能用于性能评价、阈值选择、权重学习或消融结论。
+- 普通对象虽已有正式 mask 内稳定 2D 点，但 full-video shared depth、K、pose 和 3D reconstruction 尚未接入，不能形成正式普通对象三维结构图。
+- 149 个遮挡预候选缺少正式 depth order；mask 接触和 detector-missing 信号本身不足以证明遮挡。
+- 当前没有任何通过严格门控的 partial/full occlusion 或 reappearance，不能进入 full P4。
+
+### 下一步计划
+
+- 可以开始 P4-B 离线结构增强数据集的 schema、采集和缓存构建，但不能开始标签驱动聚合训练或真实性性能结论。
+- 优先把 11 条稳定 mask track 接入 full-video shared relative depth、相机几何与三维点重建，先让 real_3 cup 获得普通对象固定结构图。
+- 为遮挡窗口同步生成正式深度次序与历史支撑证据，并补充独立的几何验证视频，覆盖 partial/full occlusion、reappearance 和 out-of-frame。
+- 在多视频、多对象、多事件覆盖到位后，再讨论 P4-B 分支标准化、无标签权重设定与冻结实验协议。
+
+## 2026-07-22 - P4-B Versioned Structural Enhancement Dataset
+
+### 目的
+
+建立版本化、可复现、可断点续跑且与真假标签隔离的离线结构增强数据集。将 P3-D.1 的六视频全帧正式实例 mask、real_3 全视频真实单目相对深度、clip-local shared 3D，以及 P4-A.1 已有正式动态证据迁入统一 Parquet/array schema。本阶段不训练分类器，不计算 AUC/F1/准确率，不使用真假标签选择 clip、拟合归一化统计或学习聚合权重。
+
+### 新增文件
+
+- `configs/p4b_six_video_smoke.yaml`：六视频 P4-B 数据源、scene-aware clip、provider、阶段与标签隔离配置。
+- `src/semantic3d/dataset_builder/schema.py`：schema 版本、dataset manifest、evidence applicability 和 NaN/valid 契约。
+- `src/semantic3d/dataset_builder/ids.py`：dataset/video/clip/frame/object/point/edge/evidence/coordinate system 稳定 ID。
+- `src/semantic3d/dataset_builder/manifest.py`：视频探测、全帧 scene signature、scene segment、重叠 clip 和唯一 owner 分配。
+- `src/semantic3d/dataset_builder/cache.py`：内容寻址阶段缓存、artifact hash、损坏检测和 atomic completion record。
+- `src/semantic3d/dataset_builder/stages.py`：01–13 阶段依赖图与下游失效传播。
+- `src/semantic3d/dataset_builder/clip_alignment.py`：跨 clip 相似变换契约；无可靠 overlap alignment 时禁止三维坐标相减。
+- `src/semantic3d/dataset_builder/writer.py`、`reader.py`：真实 Apache Parquet、压缩数组引用、SHA-256、atomic write 和显式标签读取拒绝。
+- `src/semantic3d/dataset_builder/validation.py`：ID、外键、owner、scene、coordinate、NaN、array hash、正式 mask、diagnostic 和标签隔离验证。
+- `src/semantic3d/dataset_builder/pipeline.py`：标签隔离的 13 阶段离线构建器、逐帧深度 resume、正式证据迁移和 applicability coverage。
+- `scripts/build_structural_enhancement_dataset.py`：支持 `--config`、`--video-id`、`--stage`、`--resume`、`--force-stage`、`--device`、`--num-workers` 和 `--dry-run` 的统一 runner。
+- `scripts/validate_structural_enhancement_dataset.py`：数据集完整性和覆盖验证入口。
+- `scripts/build_labels_manifest.py`：结构构建完成后独立生成标签表；不属于 13 阶段且不会被结构 builder 读取。
+- `tests/test_structural_enhancement_dataset.py`：稳定 ID、scene/owner、坐标隔离、NaN、Parquet、标签隔离和确定性 resume 测试。
+- `tests/test_dataset_builder_cache.py`：cache key、权重/配置失效、损坏缓存、临时文件和 atomic write 测试。
+
+### 修改文件
+
+- `pyproject.toml`：增加 `pyarrow>=15.0`，用于真实 Parquet 输出。
+- `docs/DEV_LOG.md`：追加本次 P4-B 设计、真实运行结果和限制。
+
+### 删除文件
+
+- 无。
+
+### 主要变化
+
+- schema 版本为 `semantic3d_structural_enhancement_v1`，pipeline 版本为 `p4b_v1`；当前 dataset ID 为 `dataset_bf697e96fded98a1838f`。
+- 六视频全部完成索引：984 个唯一源帧、59 个 scene-aware clip、2,308 条 clip-frame membership；984 个可评分帧各有且只有一个 owner，owner 覆盖率 100%。其余 1,324 条是 context membership，不写重复正式证据。
+- dataset manifest 保存 Git commit、完整 config SHA-256、provider metadata、权重哈希、随机种子、Python/PyTorch/OpenCV/Ultralytics/PyArrow/OS/device/package-lock hash。结构构建器没有 label 参数，不读取真假或篡改标签；独立脚本在结构阶段完成后通过 video_id 写入 6 条 `labels_manifest.parquet`，该表不进入结构 cache graph。
+- 正式对象观测 2,455 条；正式 visible instance mask 1,823 条，有效率 `0.742566`；bbox fallback 为 0，未推断 amodal mask。所有迁入 mask 已复制到 dataset arrays 并记录 shape/dtype/SHA-256。
+- 使用本地缓存的 Depth Anything V2 Small 对 real_3 全部 201 帧执行真实单目推理。保存 reciprocal 转换后的 `relative_depth`，项目约定值越大越远；该深度不是米制深度。其他五个视频当前没有 P4-B full-video depth，均保持 invalid/NaN。
+- real_3 通过 clip 内背景中位数尺度对齐获得 201/201 个 owned shared-3D frame，显著高于旧 8 帧 smoke；全数据集 shared-3D 覆盖为 `201/984=0.204268`。12 个 real_3 clip 为 `static_camera_3d`，其余 47 个 clip 为 unavailable。不同 clip 使用不同 coordinate system，未做未经验证的跨 clip 三维减法。
+- 关键点表迁入 8 条可用 real_3 person frame coverage 记录；坐标本身没有伪造补全，因此不能声称全视频关键点覆盖。
+- 全视频普通对象漏斗发现 2 条 track 同时具有正式 mask 与 shared depth，但稳定 mask 内三维点 correspondence 尚未实现，普通对象正式结构图仍为 0，普通对象 structure transition 仍为 0。已有 person structure track 为 1，已验证正式 structure transition 仍为 7。
+- 已迁入 98 条 point、56 条 edge、25 条分支化 object、7 条 frame 和 1 条 clip 有效证据。P4-A.1 的四个正式分支保持为 direction、relative velocity、dynamic reprojection 和 person structure；没有从输出异常值学习阈值或权重。
+- real_3 的 registry branch coverage 为 `4/13=0.307692`；当前理论适用分支覆盖为 `4/9=0.444444`。`statistically_normalized_value` 全部为 NaN，`normalization_fit_source=none`。
+- 同步 depth order 已从旧扫描的 0 帧增加到 real_3 的 201 帧；仅 1 帧同时存在正式 mask overlap 和 depth order。没有片段满足完整可见性变化/历史支撑门控，正式 partial/full occlusion 和 reappearance 仍为 0；分支记录为 `not_applicable`，不是残差 0。
+- 阶段输出使用 content-addressed cache、临时文件和 atomic rename。逐帧 depth artifact 可在中断后复用；损坏 array/cache hash 会导致 miss。最终同配置 resume 为 13/13 cache hit。
+- dataset validator 检查 16 张必需表，结果为 0 errors、0 warnings、0 array hash errors。报告位于 `outputs/structural_enhancement_dataset/p4b_six_video_smoke/reports/`；大数组和 outputs 保持 Git 忽略。
+
+### 验证命令
+
+```bash
+.venv/bin/python scripts/build_structural_enhancement_dataset.py \
+  --config configs/p4b_six_video_smoke.yaml \
+  --dry-run
+
+.venv/bin/python scripts/build_structural_enhancement_dataset.py \
+  --config configs/p4b_six_video_smoke.yaml \
+  --resume \
+  --device cpu
+
+.venv/bin/python scripts/validate_structural_enhancement_dataset.py \
+  --dataset-root outputs/structural_enhancement_dataset/p4b_six_video_smoke
+
+.venv/bin/python scripts/build_labels_manifest.py \
+  --input-manifest data/manifests/pilot_real_fake.csv \
+  --dataset-root outputs/structural_enhancement_dataset/p4b_six_video_smoke
+
+.venv/bin/python -m pytest \
+  tests/test_structural_enhancement_dataset.py \
+  tests/test_dataset_builder_cache.py -q
+
+.venv/bin/python -m pytest -q
+sha256sum configs/scale_priors_strict_v1.yaml configs/scale_priors_strict_v2.yaml
+```
+
+### 验证结果
+
+- P4-B 专项：`14 passed in 1.99s`。
+- 全量：`430 passed in 108.69s`；唯一警告仍为本机 NVIDIA 驱动与 PyTorch CUDA 构建不匹配，正式构建显式使用 CPU。
+- 六视频索引：984/984 唯一帧，59 clips，984/984 owner frames。
+- dataset validation：16/16 必需表存在，`valid=true`，0 integrity errors，0 warnings。
+- 最终同配置 resume：13/13 阶段 cache hit；ID、manifest 行数、owner 分配和 applicability 状态保持一致。
+- strict v1 SHA-256 保持 `e86466e19fe3e1663fa855fdf73843cf7ab8b5b6c8fa8771aa46172f6b726a6b`。
+- strict v2 SHA-256 保持 `3c55c8eb42e19d2447b00794085d8e6fa233c37a2071ef51f23b447d23ef268b`。
+
+### 当前限制
+
+- 只有 real_3 完成 full-video depth/shared 3D；其余五个视频是完整索引与正式 mask 数据，但没有 full-video geometry，不能用于六视频 P4-C 统计建模。
+- real_3 的 full-video shared 3D 当前由 approximate K、static-camera contract 和 clip-local relative-depth alignment 构成，不是公制重建；clip 间没有可靠 alignment，坐标保持隔离。
+- keypoint/point-track/dynamic residual 仍只覆盖原 8 帧附近，dynamic-readiness 不是 201 帧全覆盖。
+- 普通对象有 2 条可进入下一漏斗的 track，但稳定三维点 correspondence 未实现，所以正式普通对象结构图没有从 0 增加。
+- depth order 同步覆盖已改善，但严格遮挡事件仍为 0；不能通过降低事件标准制造遮挡证据。
+- 当前标签隔离 schema 和缓存基础已经具备，但样本、几何模式、对象结构和事件覆盖不足，尚不具备进入 P4-C 训练集统计建模或真假性能评价的条件。
+
+### 下一步计划
+
+- 将 full-video depth/shared 3D 扩展到其余五个视频，并独立验证每个 geometry mode 与 clip alignment 质量。
+- 在正式 mask 内建立跨帧稳定 point correspondence，优先让 real_3 cup 的 2D 候选点形成 clip-local 固定三维结构图与 transition。
+- 对 full-video person keypoints 和 KLT point tracks 做同一 owner/coordinate contract 下的离线提取，避免只迁移 8 帧 smoke。
+- 增加独立遮挡事件覆盖视频；在不读取真假标签的前提下验证 partial/full occlusion、out-of-frame 和 reappearance。
+- 只有在多视频、多个对象/事件和正式分支覆盖到位后，再冻结无标签归一化拟合数据划分并进入 P4-C；当前六视频不得用于学习正式统计参数。
+
+## 2026-07-22 - P4-B.5 Six-Video Full Structural Observation Coverage
+
+### 目的
+
+在不读取真假标签、不训练分类器、不拟合统计参数和不降低事件门控的前提下，将 P4-B 从 real_3 局部深度与 8 帧动态 smoke 扩展为六视频 984 帧 canonical depth、全 59 clip 二维点轨迹与序列几何诊断。补齐普通对象正式 mask 内固定结构图、owned-frame 动态证据和遮挡候选同步深度次序，并保持 frame-level relative 3D、sequence-aligned geometry 与 dynamic-ready 三种语义严格分离。
+
+### 新增文件
+
+- `configs/p4b5_six_video_full_observation.yaml`：P4-B.5 六视频全观测配置；输出到独立版本目录并声明 P4-B 增量来源。
+- `src/semantic3d/dataset_builder/p4b5_contracts.py`：五类覆盖指标、clip geometry decision、跨 clip 身份交接和同步深度次序契约。
+- `src/semantic3d/dataset_builder/p4b5_pipeline.py`：全帧 depth/keypoint、全 clip 点跟踪/几何、结构图、动态证据和遮挡重评分的 13 阶段实现。
+- `tests/test_p4b5_full_observation.py`：P4-B.5 覆盖语义、frame/sequence 隔离、点 ID、固定图、handoff、深度次序、增量写入和标签隔离测试。
+
+### 修改文件
+
+- `scripts/build_structural_enhancement_dataset.py`：根据配置选择 legacy P4-B 或 P4-B.5 builder，旧入口继续兼容。
+- `src/semantic3d/dataset_builder/schema.py`：增加 P4-B.5 pipeline 版本和条件化表主键。
+- `src/semantic3d/dataset_builder/__init__.py`：导出 P4-B.5 数据契约和构建器。
+- `src/semantic3d/dataset_builder/validation.py`：增加 raw/canonical depth、frame/sequence 语义隔离、owned/context 去重、点 ID、跨 clip 3D、正式 mask 结构点、证据追溯和冻结先验哈希验证。
+- `docs/DEV_LOG.md`：追加本次真实构建、验证结果和限制。
+
+### 删除文件
+
+- 无。
+
+### 主要变化
+
+- 新数据集位于 `outputs/structural_enhancement_dataset/p4b5_six_video_full_observation/`，dataset ID 为 `dataset_1ae499fd7cdd9d8501dc`；旧 `p4b_six_video_smoke` 未覆盖。
+- 六视频 canonical relative depth 覆盖 `984/984=100%`。保存 raw model output 与 canonical relative depth；`visualization_depth_used=false`。深度仍为 Depth Anything 单目相对深度，不是米制深度。
+- frame-level shared relative 3D 覆盖 `656/984=66.67%`。其坐标为逐帧 camera frame，world 字段缺失，禁止跨帧直接相减。
+- 59/59 clip 均完成 sequence depth alignment 诊断；只有 2/59 clip 被保守判定为 `static_camera_3d` 并进入 dynamic-ready，57 个为 `unavailable`。其中 26 个缺少可用 full-SE3，26 个只有未物化旋转变换的诊断证据，5 个缺少足够独立点跟踪；没有把 homography 诊断伪装成 rotation-compensated 轨迹。
+- 全视频 342 条 person observation 中 209 条获得有效人体关键点，133 条为 `no_pose_detection`；共保存 3,553 个关键点槽位，其中 2,589 个有效。形成 1 条 person 固定结构 track。
+- 全 59 clip 保存 83,689 条二维点观测，其中 80,836 条有效，对应 3,411 条独立 clip point track；owned/context 标记与唯一 owner 用于避免重叠 clip 重复写正式证据。
+- 保存 83,689 条三维点观测记录；受严格 sequence geometry 限制，只有 4,031 条有效，其余保持 invalid/NaN，不跨未对齐 coordinate system 计算差值。
+- 正式动态证据新增 5,364 条有效 point evidence：`track_3d_continuity=1361`、`direction_consistency=1336`、`relative_velocity_change=1336`、`dynamic_reprojection=1331`；另有 64 条有效 `structure_temporal` edge evidence。coverage 报告按 owned point-transition 候选口径记录 `1425/35984=3.96%`，与 evidence 表行数是不同统计口径。
+- 旧 P4-B 两条普通对象候选按视频、类别和帧范围映射：real_3 `cup` 从正式 mask、稳定 2D point ID、有效 clip-local 3D 进入 1 个正式固定结构图和 15 个有效 transition；real_3 单帧 `chair` 只有 frame 0 的 1 次观测，因不满足长轨迹条件而未建立点轨迹、结构图或 transition。
+- 普通对象正式结构图从 0 增加到 6，分布为 fake_1 的 5 条和 real_3 cup 的 1 条；4 条普通对象 clip-track 共产生 49 条有效 transition。加上 person 的 15 条，正式 structure transition 总数为 64。bbox graph 正式证据数保持 0，跨未对齐 clip transition 保持 0。
+- 对旧 149 个遮挡预候选全部补齐同步 depth-order 诊断；全量扫描另产生 367 条具有正式 mask overlap 和有效深度次序的记录。由于 431 条深度关系仍不确定且没有候选同时通过完整事件门控，正式 partial/full occlusion 事件仍为 0；无事件不写成残差 0。
+- 五类覆盖率分别持久化为 `frame_depth_coverage`、`frame_shared_3d_coverage`、`sequence_depth_aligned_coverage`、`dynamic_3d_ready_coverage` 和 `formal_dynamic_evidence_coverage`，不再用单一 shared-3D 指标混淆观测与动态可用性。
+- 数据集记录 `truth_labels_used=false`、`classification_output=false`，未产生真假分类、AUC/F1/准确率、阈值拟合或标签驱动片段选择。
+
+### 验证命令
+
+```bash
+.venv/bin/python scripts/build_structural_enhancement_dataset.py \
+  --config configs/p4b5_six_video_full_observation.yaml \
+  --resume --device cpu
+
+.venv/bin/python scripts/validate_structural_enhancement_dataset.py \
+  --dataset-root outputs/structural_enhancement_dataset/p4b5_six_video_full_observation
+
+.venv/bin/python -m pytest tests/test_p4b5_full_observation.py -q
+.venv/bin/python -m pytest -q \
+  --junitxml=/tmp/p4b5_full_suite.xml
+
+sha256sum configs/scale_priors_strict_v1.yaml \
+  configs/scale_priors_strict_v2.yaml
+```
+
+### 验证结果
+
+- 六视频真实离线构建完成，13 个阶段均写入完成记录；stage 01-06 复用可验证缓存/旧数组，stage 07-13 完成全 clip 重建与派生证据。
+- 完整构建后以同一配置再次执行 `--resume`，13/13 阶段全部 `cache_hit=true`，没有重新运行模型推理。
+- P4-B.5 专项：`15 passed`。
+- 全量：`445 tests`，`0 failures`，`0 errors`，`5 skipped`，测试时间约 `94.39s`。
+- dataset validation：`valid=true`，25 张表通过检查，`0 errors`、`0 warnings`、`0 array hash errors`；984 个唯一帧、59 个 clip、984 个 owned frame。
+- strict v1 SHA-256 保持 `e86466e19fe3e1663fa855fdf73843cf7ab8b5b6c8fa8771aa46172f6b726a6b`。
+- strict v2 SHA-256 保持 `3c55c8eb42e19d2447b00794085d8e6fa233c37a2071ef51f23b447d23ef268b`。
+
+### 当前限制
+
+- 六视频有完整逐帧单目相对深度，但没有公制尺度；frame camera coordinates 不能被解释为世界坐标或跨帧公制轨迹。
+- 59 个 clip 中仅 2 个通过严格 dynamic-ready，动态证据集中在少量 static-camera clip；57 个 unavailable clip 的 frame-level 3D 不能替代序列三维证据。
+- 当前没有物化的 rotation-only 变换，也没有观测充分的 full-SE3；因此 rotation/full-SE3 正式轨迹仍为 0。
+- 普通对象结构图已从 0 增加到 6，但有效 transition 仍集中在 fake_1 与 real_3，不能代表六视频广泛对象覆盖。
+- 149 个旧遮挡预候选已获得同步 depth order，但没有候选通过全部遮挡事件门控；正式遮挡事件仍为 0，不能训练或评价遮挡分支。
+- 动态 evidence 行数与 formal coverage ratio 使用不同分母：前者是各分支可追溯证据行，后者是 owned point-transition 候选覆盖，报告时不得直接互换。
+- 六视频仍是工程覆盖集，不是统计训练集；不能用于学习归一化、聚合权重、真假阈值或报告性能指标。
+
+### 下一步计划
+
+- 当前可以进入 P4-C0 正式数据集规划：冻结 schema、定义采集协议、规划 camera-motion/occlusion/reappearance/ordinary-structure 覆盖和 train/val/test 隔离。
+- 当前不能进入 P4-C 统计建模。需要先补充可观测 rotation/full-SE3 几何、独立遮挡事件视频、更多普通对象结构 track，以及足够规模且标签严格隔离的数据。
+- 后续若实现跨 clip 3D 连续性，必须先生成并验证 `ClipAlignmentObservation`；身份 handoff 本身不得授权三维坐标相减。
+
+## 2026-07-22 - P4-C0 Experiment Protocol Planning
+
+### 目的
+
+在 P4-B.5 六视频结构观测完成后，建立正式实验所需的数据集目录清单、稳定 source group、group-aware split、独立标签协议、分支能力分层、重复/泄漏审计、missingness shortcut 诊断、覆盖目标和存储规划。本阶段只进行协议 smoke，不读取残差大小决定划分，不拟合均值/方差/MAD/分位数，不学习聚合权重，不选择阈值，也不报告真假性能指标。
+
+### 新增文件
+
+- `configs/p4c0_experiment_protocol_v1.yaml`：P4-C0 输入、独立标签、split、重复阈值、coverage 和 `/mnt/e` 存储规划配置。
+- `src/semantic3d/experiment_protocol/schema.py`：DatasetCatalog、LabelRecord、SourceGroupRecord、VideoInventoryRecord、SplitAssignment、BranchEligibilityRecord 和验证结果契约。
+- `src/semantic3d/experiment_protocol/inventory.py`：读取结构 metadata 与独立标签 manifest，建立目录和任务资格；禁止从文件名推断标签。
+- `src/semantic3d/experiment_protocol/source_grouping.py`：基于明确 original identity 或保守 file-hash fallback 生成稳定 source-group ID。
+- `src/semantic3d/experiment_protocol/split_planner.py`：官方 split 优先、source-group 不拆分、标签/类型/来源/分辨率/时长/能力分层平衡的确定性规划器。
+- `src/semantic3d/experiment_protocol/duplicate_audit.py`：文件 SHA-256、视频 metadata、抽帧 dHash 和可选 embedding provider 接口。
+- `src/semantic3d/experiment_protocol/leakage_audit.py`：source group、exact/near duplicate、官方 split、normalization 和 threshold source 泄漏审计。
+- `src/semantic3d/experiment_protocol/branch_eligibility.py`：Tier S/D1/D2/D3/O 与 13 个正式 residual branch 的观察资格和缺失原因。
+- `src/semantic3d/experiment_protocol/coverage_planning.py`：分支/事件/标注目标缺口和按 split/class 的 missingness shortcut 风险。
+- `src/semantic3d/experiment_protocol/storage_planning.py`：按 P4-B.5 实际文件构成外推磁盘、峰值空间与 CPU 时间范围。
+- `src/semantic3d/experiment_protocol/validation.py`：16 类协议一致性和严重泄漏验证。
+- `src/semantic3d/experiment_protocol/__init__.py`：导出 P4-C0 公共 API。
+- `scripts/plan_p4c_experiment_protocol.py`：只读取 metadata、独立 label/source/split 和 coverage 的统一规划 runner。
+- `scripts/validate_p4c_experiment_protocol.py`：独立协议验证入口。
+- `tests/test_p4c_experiment_protocol.py`：稳定 group、同源不跨 split、官方 split、重复审计、标签隔离、分支能力、missingness、coverage、storage、test 隔离和冻结哈希测试。
+
+### 修改文件
+
+- `docs/DEV_LOG.md`：追加 P4-C0 六视频 protocol smoke 的真实结果。
+
+### 删除文件
+
+- 无。
+
+### 主要变化
+
+- 生成 `data/experiment_protocol_v1/` 下的 catalog、source groups、inventory、split、label schema、annotation availability、branch eligibility、duplicate/leakage、missingness、coverage、storage、protocol 和 validation 共 15 类输出；没有复制视频或结构大数组。
+- 当前 catalog 仅纳入 `local_six_video_protocol_smoke`，角色为 `geometry_validation`，规模 4 real + 2 fake。使用权记录为用户本地提供，发布和再分发权限仍需人工确认；没有凭空登记尚未提供来源与许可信息的外部正式数据集。
+- P4-B.5 内部 `labels_manifest.parquet` 为空；P4-C0 显式读取独立 `data/manifests/pilot_real_fake.csv` 并按 source name 映射。所有二元标签均来自该 manifest，没有从 `real_*`/`fake_*` 文件名推断。
+- 六个视频都缺少 original-source identity，因此生成 6 个稳定 file-hash fallback group，并全部标记 `source_group_review_required=true`。不能断言真实原片与潜在伪造衍生版已经正确合并。
+- 六视频 manifest 原声明全部为 val；协议 smoke 保守地规范化为 6 个 validation、0 train、0 test，避免在 source relation 未确认时制造跨 split。正式 group-aware 算法已实现并通过合成同源 real/fake 和官方 split 测试。
+- 15 个视频对均完成 exact/near duplicate 审计：exact duplicate 为 0，最高 near score 约 `0.6347`，低于冻结候选阈值 `0.92`；当前没有重复跨 split 冲突。但 source identity 未知仍是独立风险，不能被低感知相似度替代。
+- Tier 覆盖：6/6 视频、45/59 clip 具备 Tier S；2/6 视频、2/59 clip 具备 Tier D1；Tier D2=0，Tier D3=0。Tier O 没有 applicable 事件：53 clip 为 `not_applicable`，6 clip 为 `observation_missing`，两者保持区分。
+- 每个 video/clip 同时保存 13 个正式 evidence branch 的 geometry、mask、keypoint、event 要求。单目相对深度没有公制/尺度锚点，因此 `semantic_size_3d` 不因静态几何可用而被误标为正式可用。
+- 六视频均为 `geometry_validation_only`。正式 detection training、video classification、temporal/spatial/object localization 和 occlusion validation 资格当前均为 0；二元标签存在不等于六视频可作为正式训练/评价集。
+- normal-reference 路线冻结为只使用 train split 的真实视频，并按 branch/geometry/evidence level 拟合；supervised 路线冻结为 train 标签训练、validation 调参、test 仅最终评价。当前 fit/training video ID 列表均为空，未拟合任何参数。
+- missingness 审计不会将无 person 的 keypoint 分支填成 0，而是记为 not applicable。当前唯一 shortcut 风险是 validation 内 real/fake frame shared-3D coverage 平均差 `0.4382`；未来需要分层平衡并做 coverage-feature 消融，provider failure 默认不得成为异常证据。
+- coverage planning 的 minimum/desired gap 已独立保存：D1 当前 2，D2/D3/partial/full occlusion/reappearance 均为 0；person structure=1，ordinary structure=6，时间和空间定位标注均为 0。
+- P4-B.5 实测 984 帧占约 `2,367,328,398` bytes。按 100,000 帧线性规划，dataset output 约 `240.58 GB`，source video 约 `1.69 GB`，cache 约 `0.10 GB`，临时峰值约 `302.97 GB`；CPU 规划范围约 `27.8-138.9` 小时，正式采集前必须实测 benchmark。
+- 规划路径为 `/mnt/e/fake_video_structural_data/{source,datasets,cache,archive}`，本轮没有创建或复制正式数据。当前 `/mnt/e` 仅约 `119.19 GB` 可用，无法满足约 `302.97 GB` 峰值，因此 validator 输出容量警告；NTFS 大量小文件也需使用 Parquet/sharded arrays 和 Linux-local active cache 缓解。
+
+### 验证命令
+
+```bash
+.venv/bin/python scripts/plan_p4c_experiment_protocol.py \
+  --config configs/p4c0_experiment_protocol_v1.yaml
+
+.venv/bin/python scripts/validate_p4c_experiment_protocol.py \
+  --protocol-root data/experiment_protocol_v1 \
+  --structural-dataset-root \
+  outputs/structural_enhancement_dataset/p4b5_six_video_full_observation
+
+.venv/bin/python -m pytest tests/test_p4c_experiment_protocol.py -v
+.venv/bin/python -m pytest -q --junitxml=/tmp/p4c0_full_suite.xml
+
+sha256sum configs/scale_priors_strict_v1.yaml \
+  configs/scale_priors_strict_v2.yaml
+```
+
+### 验证结果
+
+- P4-C0 专项：`13 passed`。
+- 最终全量：总计 458 项，`453 passed`、`5 skipped`、`0 failed`，耗时约 `97.37s`。唯一警告为本机 NVIDIA 驱动与 PyTorch CUDA 构建不匹配；CPU 路径正常。
+- protocol validation：`valid=true`，16 类检查全部满足，0 error；3 个明确 warning 分别为 `/mnt/e` 峰值空间不足、6 个 source group 待复核、六视频仅为 protocol smoke。
+- leakage conflict=0；test 不属于 normalization fit 或 threshold tuning；59 个 clip 均继承视频级 validation split；split decision inputs 不包含 residual 或 anomaly score。
+- strict v1 SHA-256 保持 `e86466e19fe3e1663fa855fdf73843cf7ab8b5b6c8fa8771aa46172f6b726a6b`。
+- strict v2 SHA-256 保持 `3c55c8eb42e19d2447b00794085d8e6fa233c37a2071ef51f23b447d23ef268b`。
+
+### 当前限制
+
+- 当前只 catalog 了 6 个本地工程视频，尚未提供正式训练、validation、final-test、cross-dataset、occlusion 或 localization 数据集的来源、许可和官方 split。
+- 六视频 source identity 全部待复核；0 个已发现重复冲突不等于已排除原始视频与衍生伪造之间的来源泄漏。
+- 没有 train/test 样本；所有正式训练与评价任务资格为 0，因此不能进入统计拟合、监督训练或性能评价。
+- D2、D3、partial/full occlusion、reappearance 和时间/空间定位标注覆盖均为 0。
+- 当前 `/mnt/e` 可用空间不足以承载 100,000 帧计划的临时峰值；需要扩容、降低批次规模或把 active cache 放到更快且容量足够的 Linux 磁盘。
+- 100,000 帧存储与时间是线性工程估计，不是正式 benchmark；大规模构建前必须用目标分辨率和 provider 组合重新测量。
+
+### 下一步计划
+
+- 先选择并完成正式数据集的许可、官方 split、original-source identity、manipulation type、时间/空间标注盘点，再写入 catalog；不得根据残差表现选数据。
+- 人工确认真实原片、伪造衍生版、压缩/裁剪/转码关系，冻结 source-group manifest 后再执行正式 group-aware split。
+- 扩充 D2/D3、普通/人体结构、partial/full occlusion、reappearance 和 localization annotation 覆盖，满足 minimum engineering target 后再讨论 P4-B-scale 构建。
+- 为 `/mnt/e` 准备至少约 303 GB 峰值空间并预留安全余量，或改用分批构建和独立 archive/cache 磁盘。
+- 当前 `ready_for_p4b_scale_formal_build=false`；只有 source、license、split、storage 和 branch/event coverage 缺口关闭后才能转为 true。
+
+## 2026-07-22 - P4-C1 Frozen Experiment Manifest And Data Integrity Audit
+
+### 目的
+
+在不改变 P4-C0 协议语义、不重新规划 split、不读取异常残差、不训练模型、不拟合统计分布和不选择阈值的前提下，将 P4-B.5 六视频的 59 个重叠 clip 固化为确定性实验清单。逐样本记录视频、帧区间、标签来源、scene、缺失 camera identity、对象/深度/相机/轨迹/semantic3d 表路径、技术可用性和排除原因，并重新审计 source video、source group、原始/派生身份、文件哈希和近重复跨 split 泄漏。
+
+### 新增文件
+
+- `configs/p4c1_experiment_manifest_v1.yaml`：P4-C1 输入、核心/可选模态、完整性检查、泄漏审计和禁止操作配置。
+- `src/semantic3d/experiment_protocol/manifest_schema.py`：稳定 sample ID、clip manifest、可用性、泄漏 finding 和构建结果数据契约。
+- `src/semantic3d/experiment_protocol/data_inventory.py`：读取 P4-C0/P4-B.5 Parquet 索引并统计 clip 级对象、深度、camera、pose、轨迹和 shared-3D 可用性。
+- `src/semantic3d/experiment_protocol/exclusion_policy.py`：只基于数据完整性的显式排除规则；可选动态分支缺失不会被误判为全局不可用。
+- `src/semantic3d/experiment_protocol/manifest_builder.py`：继承冻结 split、构建 canonical JSONL、计算哈希并执行独立复现验证。
+- `src/semantic3d/experiment_protocol/manifest_report.py`：确定性 CSV/JSONL、排除/可用性/split 汇总和 Markdown 报告。
+- `scripts/build_p4c1_experiment_manifest.py`：两次内存重建、写出和验证的统一入口。
+- `scripts/validate_p4c1_experiment_manifest.py`：从现有输入重新构建并核验 manifest 哈希、排序、schema 与 split 隔离。
+- `tests/test_p4c1_experiment_manifest.py`：稳定 ID、排除策略、全 clip 覆盖、路径、相机身份、哈希和禁止操作测试。
+- `tests/test_p4c1_leakage_audit.py`：source video/group、原始来源、相同哈希、近重复和 unresolved provenance 测试。
+
+### 修改文件
+
+- `src/semantic3d/experiment_protocol/leakage_audit.py`：向后兼容保留 P4-C0 `audit_leakage`，新增 clip 去重后的视频级 P4-C1 泄漏审计。
+- `src/semantic3d/experiment_protocol/__init__.py`：导出 P4-C1 数据类、构建器、哈希和验证 API。
+- `docs/DEV_LOG.md`：追加本记录。
+
+### 删除文件
+
+- 无。
+
+### 主要变化
+
+- 输出目录为 `outputs/p4c1_experiment_manifest/`，包含 canonical JSONL、CSV、排除清单、split 汇总、可用性统计、泄漏 finding/summary、元数据、验证 JSON 和 Markdown 报告。
+- 59/59 个现有 clip 均进入清单，没有静默跳过；全部继承 P4-C0 的 `validation` split。清单按 sample ID 排序，sample ID 由 dataset、稳定 P4-B video ID、clip ID 和帧区间生成。
+- 50 个 clip 技术可用，9 个因 `required_objects_unavailable` 被明确排除。对象缺失样本仍保留在主清单和独立排除清单。
+- 视频、完整帧、深度和 camera observation 均覆盖 59/59；对象覆盖 50/59；二维点轨迹覆盖 44/59；有效 semantic3d 覆盖 45/59；sequence pose 和可信物理 camera identity 均为 0/59。后两者作为可选分支缺失记录，不伪造 ID，也不自动排除仍可用于静态审计的样本。
+- 泄漏审计先把重叠 clip 按 source video 去重。当前 cross-split error 为 0，因为 6 个视频都在 validation；但 6 个 original/derivative identity 全部未知，分别保存为 `unresolved_original_derivative_identity` warning，不能据此声明数据来源独立。
+- 清单没有读取 residual/score，不计算真实性性能；metadata 明确保存 training、fitting、threshold selection 和 classification performance 均为 false。
+- protocol SHA-256 为 `004fb982597091e038bbb833370169626326f0ad5ecd0998fd61132ed1dffc12`；manifest SHA-256 为 `3bfa3cc030adc29d1bfd6374d36ee17ad9f4a6fedb48f7b882549bcba4ad57a3`。
+- 连续两次完整运行后，输出目录全部文件的 SHA-256 清单完全一致；独立 validator 从 P4-C0/P4-B.5 输入重建得到相同 manifest SHA-256。
+
+### 验证命令
+
+```bash
+.venv/bin/python scripts/build_p4c1_experiment_manifest.py \
+  --config configs/p4c1_experiment_manifest_v1.yaml
+
+.venv/bin/python scripts/validate_p4c1_experiment_manifest.py \
+  --config configs/p4c1_experiment_manifest_v1.yaml \
+  --manifest-root outputs/p4c1_experiment_manifest
+
+.venv/bin/python -m pytest \
+  tests/test_p4c1_experiment_manifest.py \
+  tests/test_p4c1_leakage_audit.py -v
+
+.venv/bin/python -m pytest tests/test_p4c_experiment_protocol.py -q
+.venv/bin/python -m pytest -q
+```
+
+### 验证结果
+
+- P4-C1 专项：`15 passed`。
+- P4-C0 回归：`13 passed`。
+- P4-C1 validator：`valid=true`，13 项检查全部通过，0 error。
+- 两次完整构建的所有输出文件 SHA-256 完全一致。
+- 全量：`468 passed`、`5 skipped`、`0 failed`，耗时约 `96.76s`。唯一 warning 为本机 NVIDIA 驱动版本与当前 PyTorch CUDA 构建不匹配；CPU 路径正常。
+
+### 当前限制
+
+- 6 个视频仍全部属于 validation-only protocol smoke，没有 train/test，不能训练、调参或报告性能。
+- 真实原片与潜在伪造衍生版关系没有独立元数据；当前按文件哈希兜底的 6 个 source group 必须人工补充 provenance 后才能固化正式 split。
+- 没有可信 camera identity；`coordinate_system_id` 没有被冒充为物理 camera ID。
+- 当前 sequence pose 可用性为 0；轨迹和 semantic3d 也不是所有 clip 都可用。它们保持分支级缺失，不写成异常 0。
+- 9 个无对象 clip 被保留为 excluded，不能在后续流水线中静默丢弃或当作低异常样本。
+
+### 下一步计划
+
+- 在进入 P4-C2 前，先人工补齐 dataset/source provenance、真实原片与派生伪造关系、camera/scene 元数据和正式 train/validation/test 数据来源。
+- 当前阶段不进入 P4-C2，不训练模型，不拟合归一化或先验分布，不选择阈值。
+
+## 2026-07-22 - P4-C2 Formal Data Onboarding And Build Readiness Audit
+
+### 目的
+
+在不下载正式数据、不执行模型推理、不提取大规模特征、不训练、不拟合统计分布、不选择阈值且不读取测试性能的前提下，为正式数据接入建立可复现的 dataset registry、license registry、source lineage、正式 split、逐任务资格、轻量 inventory、存储批次和 missingness 风险审计。当前六视频继续仅作为 `geometry_validation_smoke`，不因已有结构观测而获得正式训练或评价资格。
+
+### 新增文件
+
+- `configs/p4c2_formal_data_readiness_v1.yaml`：P4-C2 输入、六视频 smoke 角色、正式 split 规则、冻结存储快照、missingness 计划、兼容哈希和禁止操作。
+- `src/semantic3d/experiment_protocol/formal_schema.py`：正式数据集、source lineage、formal split、任务资格和构建结果数据契约。
+- `src/semantic3d/experiment_protocol/formal_registry.py`：配置驱动的 dataset/license registry 与轻量 local-root 检查。
+- `src/semantic3d/experiment_protocol/source_lineage.py`：lineage 记录、官方 split 优先、verified origin group-aware fallback 与泄漏审计。
+- `src/semantic3d/experiment_protocol/task_eligibility.py`：每视频十任务的 `eligible/ineligible/unknown/not_applicable/provider_failed` 矩阵。
+- `src/semantic3d/experiment_protocol/storage_readiness.py`：基于冻结磁盘快照的分批空间、峰值、保留量、可删缓存、校验和失败恢复规划。
+- `src/semantic3d/experiment_protocol/p4c2_builder.py`：只读 P4-C0/P4-C1 元数据并构建完整 P4-C2 readiness。
+- `src/semantic3d/experiment_protocol/p4c2_report.py`：确定性 JSON/JSONL/CSV/YAML、哈希清单和 Markdown 报告。
+- `src/semantic3d/experiment_protocol/p4c2_validation.py`：独立重建、hash、lineage、split、任务状态、stage boundary 和 strict prior 验证。
+- `scripts/build_p4c2_formal_data_readiness.py`：连续两次构建、写出和验证入口。
+- `scripts/validate_p4c2_formal_data_readiness.py`：已有 P4-C2 artifact 的独立验证入口。
+- `tests/test_p4c2_formal_data_readiness.py`：当前 smoke 角色、lineage、资格矩阵、inventory、存储、missingness、哈希和兼容性测试。
+- `tests/test_p4c2_source_lineage.py`：官方 split、group-aware fallback、未验证身份阻断、官方冲突和跨 split 泄漏测试。
+
+### 修改文件
+
+- `src/semantic3d/experiment_protocol/__init__.py`：向后兼容导出 P4-C2 数据类、构建、split、泄漏和验证 API。
+- `docs/DEV_LOG.md`：追加本记录。
+
+### 删除文件
+
+- 无。
+
+### 主要变化
+
+- 输出目录为 `outputs/p4c2_formal_data_readiness/`，包含 `formal_dataset_registry.json`、`dataset_license_registry.json`、`source_lineage.jsonl`、`formal_split_plan.jsonl`、`task_eligibility_matrix.csv`、`data_inventory.csv`、`storage_batch_build_plan.json`、`missingness_audit_plan.yaml`、lineage 泄漏审计、readiness 报告、artifact hashes 和 validation report。
+- registry 当前只有 `local_six_video_protocol_smoke`。其 source 是用户本地文件，许可和再分发权待确认；正式训练、模型选择、阈值选择和最终评价资格全部为 false。仓库没有声明可验证来源、许可和 official split 的外部正式数据集，因此没有虚构候选数据源。
+- 六视频 source lineage 共 6 条，`original_source_id` 均缺失，身份依据仅为文件 SHA-256，不足以证明原片及派生关系；6 条全部为 `unverified`，formal split 全部留空并记录 `unverified_source_lineage`。正式 train/validation/test 均为 0；P4-C1 的 59 个 validation clip 不被提升为正式 validation 数据。
+- 任务资格矩阵为 6 视频 x 10 任务，共 60 行：`eligible=14`、`ineligible=24`、`not_applicable=5`、`provider_failed=17`、`unknown=0`。eligible 只表示当前 smoke 声明范围可用，60 行的 `eligible_for_formal_experiment` 均为 false。D2/D3 缺失为 provider failure；没有观测到遮挡事件与 provider failure 分开记录。
+- 轻量 inventory 覆盖 6/6 原视频并校验现有 SHA-256，不解码视频、不执行 provider 或模型推理。P4-C1 的对象、深度、位姿、轨迹和 semantic3d 计数只作为 availability metadata 使用，未读取 residual 或真实性性能。
+- missingness 计划按 authenticity、dataset、original source、source group 和 provider 分层，状态保留 available、unknown、not_applicable、provider_failed；明确 provider failure 不是异常证据，缺失不得填 0。
+- `/mnt/e` 使用 2026-07-22 冻结快照：可用 `55,817,076,736` bytes，安全余量 `16,106,127,360` bytes。既有 100,000 帧规划的总临时峰值加安全余量为 `319,072,879,645` bytes；10 个 10,000 帧批次中只有首批在不归档既有永久输出的条件下可容纳，正式全量构建被阻止。
+- `ready_for_formal_batch_build=false`。阻塞包括：无 verified formal dataset、无 verified original lineage、无正式三 split、E 盘峰值空间不足、D2/D3、正式遮挡/重现以及时间/空间定位标注覆盖不足。
+- P4-C2 readiness manifest SHA-256 为 `2094a721bc58c7cae1d567a41d9fd31542990a95f87f0927b87c31119280e981`；连续完整构建的所有 primary artifact SHA-256 完全一致。
+- P4-C0 config、P4-C1 config 与 strict v1/v2 均未修改；strict v1/v2 哈希仍为 `e86466e19fe3e1663fa855fdf73843cf7ab8b5b6c8fa8771aa46172f6b726a6b` 和 `3c55c8eb42e19d2447b00794085d8e6fa233c37a2071ef51f23b447d23ef268b`。
+
+### 验证命令
+
+```bash
+.venv/bin/python scripts/build_p4c2_formal_data_readiness.py \
+  --config configs/p4c2_formal_data_readiness_v1.yaml
+
+.venv/bin/python scripts/validate_p4c2_formal_data_readiness.py \
+  --config configs/p4c2_formal_data_readiness_v1.yaml \
+  --output-root outputs/p4c2_formal_data_readiness
+
+.venv/bin/python -m pytest \
+  tests/test_p4c2_formal_data_readiness.py \
+  tests/test_p4c2_source_lineage.py -v
+
+.venv/bin/python -m pytest \
+  tests/test_p4c_experiment_protocol.py \
+  tests/test_p4c1_experiment_manifest.py \
+  tests/test_p4c1_leakage_audit.py -q
+
+.venv/bin/python -m pytest -q
+```
+
+### 验证结果
+
+- P4-C2 专项：`14 passed`。
+- P4-C0/P4-C1 回归：`28 passed`。
+- P4-C2 validator：18 项检查全部通过，`valid=true`，0 error。
+- 最终全量：`482 passed`、`5 skipped`、`0 failed`，耗时约 `94.03s`。唯一 warning 为本机 NVIDIA 驱动与 PyTorch CUDA 构建不匹配；CPU 路径正常。
+
+### 当前限制
+
+- 当前没有经过来源、许可、citation、official split 和 checksum policy 独立确认的正式数据集条目。
+- 六视频真实性标签仍只能服务 geometry smoke；缺少可信原片身份，不能证明真实原片与伪造派生视频之间不存在跨 split 泄漏。
+- 正式训练、validation 和 test 都为空；本阶段不能启动后续构建、训练、调参、阈值选择或真假性能评价。
+- sequence pose、D2、D3、正式 temporal/spatial/object localization 和 occlusion/reappearance 的正式任务覆盖尚未满足。
+- 当前 `/mnt/e` 不足以容纳规划的完整临时峰值和安全余量；不能因为单个 10k-frame batch 暂时可放入就启动无法完成的全量构建。
+
+### 下一步计划
+
+- 由用户选定正式候选数据集后，先独立核验官方来源、许可、citation、下载方式、官方 split、标注类型、预计大小和 checksum，再新增版本化 registry 条目。
+- 获取 official metadata 或可信 derivation manifest，补齐 original source 与所有派生视频 lineage；未验证记录继续禁止进入正式 split。
+- 根据目标任务冻结 annotation/provider coverage 要求，并扩充 D2/D3、定位和遮挡事件数据，先审计 missingness shortcut 风险。
+- 扩充或重新规划存储，使完整峰值加安全余量可容纳，再运行 P4-C2 validator。只有 `ready_for_formal_batch_build=true` 后，才可单独批准下一阶段正式分批构建。
+
+## 2026-07-22 - P4-C3A Server Migration And Formal Batch Execution Preparation
+
+### 目的
+
+在尚未迁移服务器、尚无正式数据且禁止正式下载、批量 provider 推理、训练、分布拟合、阈值选择和测试性能读取的条件下，补强 P4-C2 资格语义，建立机器无关 runtime 配置、服务器环境预检、确定性批次规划、原子状态机、断点恢复与 conservative cleanup 框架，并生成可校验的服务器迁移清单和 smoke 验收协议。
+
+### 新增文件
+
+- `configs/runtime/local_wsl.yaml`：本地 WSL 相对路径、CPU、worker 和存储边界配置。
+- `configs/runtime/server_template.yaml`：由环境变量解析的服务器路径、CUDA 和执行资源模板。
+- `configs/p4c3a_server_smoke_v1.yaml`：服务器迁移后固定的 11 步 smoke 顺序和 P4-C0/C1/C2/strict 哈希。
+- `src/semantic3d/runtime/`：runtime 路径解析、canonical path-independent hash、依赖/CUDA/存储/Git/冻结哈希预检、迁移清单和报告模块。
+- `src/semantic3d/batch_execution/`：批次 schema、确定性 planner、原子 state store、独占 lock、artifact registry、checkpoint/retry/cleanup policy、validator 和 report。
+- `scripts/preflight_p4_server_environment.py`：服务器环境非破坏性预检入口。
+- `scripts/plan_p4_server_batches.py`：只规划、不执行的 source-group-preserving batch 入口。
+- `scripts/validate_p4_server_batch_plan.py`：批次计划独立验证入口。
+- `scripts/inspect_p4_batch_state.py`：只读检查批次状态和恢复建议。
+- `scripts/build_p4_server_migration_manifest.py`：生成迁移文件、排除清单、环境重建和 bootstrap 报告。
+- `tests/test_p4c3a_runtime_config.py`：环境变量、跨路径 hash、未解析变量、smoke 资格、provider failure guard 和正/负 readiness 测试。
+- `tests/test_p4c3a_server_preflight.py`：存储不足和 CUDA 不可用阻断测试。
+- `tests/test_p4c3a_batch_state.py`：确定性 batch ID、合法/非法状态迁移、失败历史、cleanup 和并发锁测试。
+- `tests/test_p4c3a_migration_manifest.py`：`.venv`、缓存、secret 排除、迁移 hash 和冻结 hash 测试。
+
+### 修改文件
+
+- `src/semantic3d/experiment_protocol/evidence_eligibility_policy.py`：新增 provider failure 的代码级用途限制。
+- `src/semantic3d/experiment_protocol/p4c2_builder.py`：公开可合成测试的正向 readiness 判定，保留旧私有别名。
+- `src/semantic3d/experiment_protocol/p4c2_report.py`：补充 smoke/formal 显式字段、dataset 统计和视频级资格 scope。
+- `src/semantic3d/experiment_protocol/p4c2_validation.py`：验证显式 smoke 禁用字段、任务 scope 和 readiness 统计。
+- `src/semantic3d/experiment_protocol/__init__.py`：导出 P4-C2 补强 API。
+- `docs/DEV_LOG.md`：追加本记录。
+
+### 删除文件
+
+- 无。
+
+### 主要变化
+
+- P4-C2 registry 现在显式输出 `is_formal_dataset=false`、`eligible_for_formal_split=false` 和四项正式用途 false；readiness metadata 分别输出 entries=1、formal=0、smoke=1。任务矩阵明确 `eligibility_scope=video`。
+- `provider_failed` 只能进入 quality control 和 missingness audit。转换为 anomaly score、fake label、normal reference fit 或 supervised aggregation 会在代码层抛出异常。
+- 新增完全合成的正向 readiness fixture；当 verified formal dataset、verified lineage、三 split、D2/D3、定位、遮挡和存储全部满足时，`ready_for_formal_batch_build=true`。当前真实 P4-C2 仍保持 false。
+- runtime 路径支持 `PROJECT_ROOT`、`DATA_ROOT`、`DOWNLOAD_ROOT`、`TEMPORARY_ROOT`、`CACHE_ROOT`、`MODEL_ROOT`、`OUTPUT_ROOT`、`LOG_ROOT` 覆盖。canonical hash 将绝对根替换为稳定 token，并排除 hostname、username、mtime 和 run time；location metadata 单独保存。
+- 当前本机预检：Python 依赖均可导入；`ffmpeg/ffprobe` 缺失；Torch 为 `2.12.1+cu130`、compiled CUDA `13.0`、device_count=1，但驱动不兼容导致 `cuda_available=false`，最小 CUDA tensor/matmul 未通过。SHA 和原子 rename 通过，目录可访问，冻结哈希匹配。
+- 当前 readiness：`ready_for_server_migration=true`；因 ffmpeg/ffprobe 缺失，`ready_for_server_smoke=false`；当前不是服务器 profile，因此 `ready_for_formal_dataset_registration=false`；CUDA、正式数据、正式 split 和 P4-C2 coverage 均未解除，`ready_for_formal_batch_execution=false`。
+- batch 状态支持 planned、downloading、downloaded、processing、validating、completed、failed、cleaned。completed 必须先有 validated artifacts；cleaned 只能从 completed 进入；failed 保留原因、产物和 attempt，retry 必须显式迁移；cleanup 默认 dry-run。
+- 当前 formal split 为空，batch plan 为 0 个批次，SHA-256 为 `4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945`。空计划是正式数据仍被阻断的正确结果，没有启动执行。
+- 迁移清单包含源码、脚本、配置、测试、文档、六视频、小型协议索引、P4-C1/C2 冻结产物、环境定义和三个小型 YOLO 权重；排除 `.venv`、`.git`、Python/pytest cache、大型可重建结构数据、临时状态和敏感文件。服务器必须重建 Python 环境。
+- P4-C0 protocol SHA 保持 `004fb982597091e038bbb833370169626326f0ad5ecd0998fd61132ed1dffc12`；P4-C1 manifest SHA 保持 `3bfa3cc030adc29d1bfd6374d36ee17ad9f4a6fedb48f7b882549bcba4ad57a3`；P4-C2 semantic manifest SHA 保持 `2094a721bc58c7cae1d567a41d9fd31542990a95f87f0927b87c31119280e981`；strict v1/v2 哈希不变。
+
+### 验证命令
+
+```bash
+.venv/bin/python scripts/build_p4c2_formal_data_readiness.py
+
+.venv/bin/python scripts/preflight_p4_server_environment.py \
+  --runtime-config configs/runtime/local_wsl.yaml
+
+.venv/bin/python scripts/plan_p4_server_batches.py \
+  --runtime-config configs/runtime/local_wsl.yaml
+
+.venv/bin/python scripts/validate_p4_server_batch_plan.py
+
+.venv/bin/python scripts/build_p4_server_migration_manifest.py \
+  --runtime-config configs/runtime/local_wsl.yaml
+
+.venv/bin/python -m pytest \
+  tests/test_p4c3a_runtime_config.py \
+  tests/test_p4c3a_server_preflight.py \
+  tests/test_p4c3a_batch_state.py \
+  tests/test_p4c3a_migration_manifest.py -v
+
+.venv/bin/python -m pytest -q -rs
+```
+
+### 验证结果
+
+- P4-C3A 专项：`21 passed`。
+- P4-C0/C1/C2/C3A 联合专项：`63 passed`。
+- 全量：`503 passed`、`5 skipped`、`0 failed`，耗时约 `99.03s`。
+- skip 原因：1 项缺本地 pose weight 或 real_3 observation；1 项缺 P3 real shared cache；2 项缺已有 P3 shared-geometry smoke artifacts；1 项因六视频 strict-v2 输出不是提交 fixture。均为显式外部资源或派生产物缺失，不是隐藏失败。
+- 唯一 warning 为本机 NVIDIA driver 与当前 PyTorch CUDA build 不兼容；预检已将其转化为正式 GPU batch blocker，没有伪造 GPU 可用。
+
+### 当前限制
+
+- 当前机器缺少 ffmpeg/ffprobe，不能通过完整 server smoke；CUDA 驱动与 PyTorch build 不兼容，不能执行正式 GPU batch。
+- 服务器尚未迁移和实测；server template 中的环境变量必须在目标机器解析。
+- P4-C2 仍没有 verified formal dataset、verified original-source lineage 或 formal train/validation/test。
+- D2、D3、时间/空间定位和遮挡/重现的正式数据覆盖不足。
+- 当前 Git worktree 非 clean；迁移清单可校验所有实际文件，但提交到远端前仍应创建新的 Git commit/tag。
+- 当前 batch plan 为空；不得把框架存在误述为正式批处理已经开始。
+
+### 下一步计划
+
+- 在服务器准备兼容的 NVIDIA driver/CUDA/PyTorch 组合并安装 ffmpeg/ffprobe，解析 server runtime 环境变量后重新运行 preflight。
+- 使用迁移文件 SHA-256 校验代码、六视频、P4-C0/C1/C2 和必要权重；服务器重新创建 `.venv` 并运行全量测试和六视频 geometry smoke。
+- 只有服务器 smoke、冻结哈希和 Git commit/tag 全部确认后，才允许登记正式数据集。
+- 正式数据 registry、lineage、license、split 和 storage readiness 全部通过后，再单独批准 P4-C3B 或正式 batch execution。
+
+## 2026-07-22 - P4-C3A-G Git Release And Server Checkout Preparation
+
+### 目的
+
+将 P4-C3A 的部署方式从物理迁移包复制调整为远程 Git 发布后由服务器
+`git clone`/`git pull` 获取源码，并在不执行 Git 提交、推送、正式数据下载、
+模型训练或正式批处理的前提下建立发布审计、服务器环境重建和资产校验机制。
+
+### 新增文件
+
+- `src/semantic3d/git_release/`：Git 内容分类、敏感与绝对路径审计、模型注册表校验和发布 readiness。
+- `configs/model_registry/yolo_weights_v1.yaml`：三个 YOLO 权重的来源、用途、版本、大小、SHA-256 和再分发门控。
+- `configs/data_registry/`：正式数据集注册 schema 和六视频 geometry smoke 的非正式、不可再分发登记。
+- `requirements-lock.txt`：不绑定 PyTorch/CUDA 的基础与测试依赖版本。
+- `requirements-inference-lock.txt`：当前验证过的顶层推理依赖版本；PyTorch 由服务器按驱动单独安装。
+- `scripts/bootstrap_p4_server.sh`：可重复运行的服务器环境重建、preflight、测试和 checkout 验收入口。
+- `scripts/verify_p4_git_checkout.py`：服务器 clone 后的 Git、冻结哈希、权重、视频和 smoke readiness 校验。
+- `scripts/fetch_registered_models.py`：默认 dry-run 的权重获取与 SHA-256 校验工具。
+- `scripts/validate_git_release.py`：确定性生成 Git 发布清单和 readiness 报告。
+- `docs/SERVER_ENVIRONMENT.md`：服务器环境变量、系统依赖和 PyTorch/CUDA 安装边界。
+- `docs/SERVER_DATA_SETUP.md`：正式数据注册条件及六视频人工放置和校验规则。
+- `tests/test_p4c3a_git_release.py`：发布、路径、敏感信息、权重许可、dry-run 和冻结哈希专项测试。
+
+### 修改文件
+
+- `.gitignore`：排除环境、缓存、敏感信息、媒体、权重和大输出；只对白名单中的 P4-C1/C2 及空 P4-C3A 批次计划开放小型冻结产物。
+- `pyproject.toml`：Python 范围明确为 3.11-3.13，并记录已验证的 test/YOLO/depth 顶层版本。
+- `configs/runtime/server_template.yaml`：临时目录由 `${CACHE_ROOT}/tmp` 派生，不再要求额外本机路径。
+- `src/semantic3d/experiment_protocol/storage_planning.py`：默认存储路径改为环境变量/相对路径，冻结 v1/v2 与 P4-C0/C1/C2 语义内容未修改。
+- `README.md`：移除本机绝对路径与 Conda base 用法，改为项目本地 `.venv` 和服务器文档入口。
+
+### 删除文件
+
+- 无。
+
+### 主要变化
+
+- 当前远程为 `origin`，分支为 `main`，基准 commit 为 `46d0b8cced5036052a2f55a0f8d421616fe49e3b`；本轮未执行 `git add`、commit、tag 或 push。
+- 三个 YOLO 权重本地大小和 SHA-256 均匹配注册表，但再分发许可未独立确认，因此不提交普通 Git、不启用 Git LFS，推荐服务器按官方来源获取或人工复制后校验。
+- 六视频许可和 original source identity 未确认，保持 `geometry_validation_smoke`，六项正式资格均为 false，视频本体不上传 Git。
+- P4-C1/C2 小型冻结产物和空 P4-C3A batch plan 通过 `.gitignore` 白名单保留，preflight 和大规模实验输出继续忽略。
+- location-specific 历史快照与文档被单独标记；核心源码和 server runtime template 没有未解析本机绝对路径。
+- canonical semantic hash 继续排除绝对路径、hostname、username 和时间字段；不同 checkout 路径测试一致。
+
+### 验证命令
+
+```bash
+.venv/bin/python -m pytest tests/test_p4c3a_git_release.py -q -rs
+.venv/bin/python -m pytest tests/test_p4c_experiment_protocol.py tests/test_p4c1_experiment_manifest.py tests/test_p4c1_leakage_audit.py tests/test_p4c2_formal_data_readiness.py tests/test_p4c2_source_lineage.py tests/test_p4c3a_runtime_config.py tests/test_p4c3a_server_preflight.py tests/test_p4c3a_batch_state.py tests/test_p4c3a_migration_manifest.py tests/test_p4c3a_git_release.py -q -rs
+.venv/bin/python -m pytest -q -rs
+.venv/bin/python scripts/fetch_registered_models.py
+.venv/bin/python scripts/validate_git_release.py
+bash -n scripts/bootstrap_p4_server.sh
+```
+
+### 验证结果
+
+- P4-C3A-G 专项：11 passed。
+- P4-C0/C1/C2/C3A 联合回归：74 passed，无 skip。
+- 全量测试：514 passed、5 skipped、1 warning；5 个 skip 均为可选本地权重/缓存/旧 smoke 派生输出缺失，P4-C0/C1/C2/C3A 关键测试无 skip。
+- 敏感提交候选为 0，核心/正式 runtime 绝对路径 blocker 为 0，普通 Git 大文件提交候选为 0。
+- 权重 dry-run 未执行下载；bootstrap shell 语法通过；本地 checkout 逻辑校验通过，但本机 preflight 因 CUDA/系统依赖状态未达到 server smoke。
+- `ready_for_git_commit=true`；工作区尚未提交，因此 `ready_for_git_push=false`、`ready_for_server_clone=false`；服务器尚未实际执行，因此 `ready_for_server_smoke=false`；`ready_for_formal_batch_execution=false`。
+
+### 冻结哈希
+
+- P4-C0 semantic protocol：`004fb982597091e038bbb833370169626326f0ad5ecd0998fd61132ed1dffc12`。
+- P4-C1 manifest：`3bfa3cc030adc29d1bfd6374d36ee17ad9f4a6fedb48f7b882549bcba4ad57a3`。
+- P4-C2 semantic manifest：`2094a721bc58c7cae1d567a41d9fd31542990a95f87f0927b87c31119280e981`。
+- strict v1：`e86466e19fe3e1663fa855fdf73843cf7ab8b5b6c8fa8771aa46172f6b726a6b`。
+- strict v2：`3c55c8eb42e19d2447b00794085d8e6fa233c37a2071ef51f23b447d23ef268b`。
+- P4-C3A server smoke config：`4742f9dc910e154bab03196568c4d33e8a6596a81874b87adc1d4553451b688d`。
+
+### 当前限制
+
+- 工作区包含此前 P4 阶段的大量未跟踪/修改文件，用户需要人工复核后一次性提交；提交前不能声称服务器 clone 可复现当前工作树。
+- 当前本机 Torch 2.12.1 CUDA 13.0 与驱动不兼容，该版本未锁定到服务器；服务器必须选择与实际驱动兼容的 PyTorch build。
+- `ffmpeg`/`ffprobe` 为服务器系统依赖，不能由 Python lock 文件替代。
+- 权重与六视频均不随 Git checkout 获取，必须在服务器按注册表人工准备并校验。
+- 当前没有正式数据集，P4-C2 仍阻止正式批次构建。
+
+### 下一步计划
+
+- 用户人工检查 `outputs/p4c3a_git_release/` 后执行 Git add/commit/push；本项目不会自动操作 Git 历史。
+- 服务器 clone 后设置 runtime 环境变量，准备已登记权重与 smoke 视频，再运行 `scripts/bootstrap_p4_server.sh`。
+- 只有 server preflight、checkout、全量测试、冻结哈希和 smoke 资产校验全部通过后，才讨论后续阶段；本轮不启动 P4-C3B。
+
+## 2026-07-22 - P4-C3A-MD2 Metric Primary Scale Geometry Refactor
+
+### 目的
+
+将对象语义尺度几何从“同帧对象对 R_sd 为核心”重构为固定的三层优先级：
+单对象米制绝对尺度为主分支、同对象跨帧尺度稳定性为时序支持、冻结
+strict-v2 对象对尺度—深度残差为 fallback/audit。该阶段只完成代码、合成
+几何验证和六视频只读资格审计，不运行大型米制深度模型，也不评价真假性能。
+
+### 新增文件
+
+- `configs/p4c3a_scale_geometry_priority_v1.yaml`：冻结三分支优先级、质量门控、默认 `fallback_only` 和默认关闭的米制 provider 配置。
+- `src/semantic3d/method_completion/scale_evidence.py`：统一 `ScaleGeometryEvidence`、证据角色、provider 状态和路由结果契约。
+- `src/semantic3d/method_completion/multi_interval_prior.py`：按维度保存多个不连续米制区间，并计算到区间并集的最近对数距离。
+- `src/semantic3d/method_completion/metric_scale.py`：米制深度门控、投影尺度恢复、ray-distance 到 z-depth 转换、Mask 点云稳健范围和单对象物理尺度残差。
+- `src/semantic3d/method_completion/temporal_scale.py`：metric/relative-local 同对象跨帧尺度历史、参考值和隔离门控。
+- `src/semantic3d/method_completion/scale_router.py`：固定三分支优先级、对象对策略和 strict-v2 行适配器。
+- `src/semantic3d/method_completion/metric_depth_adapters.py`：UniDepthV2、Depth Pro、Metric3Dv2 和 Depth Anything V2 metric 的懒导入、无自动下载接口骨架。
+- `src/semantic3d/method_completion/md2_audit.py`：合成验证、六视频只读 routing/funnel 和冻结回归审计。
+- `scripts/run_p4c3a_metric_primary_refactor.py`：生成 MD2 的16项审计和报告产物。
+- `tests/test_p4c3a_metric_single_object_primary.py`：针孔尺寸、resize/crop、ray depth、门控和维度独立可观测性测试。
+- `tests/test_p4c3a_temporal_same_object_scale.py`：时序恒定、突变、稳健参考、ID/provider/depth定义隔离测试。
+- `tests/test_p4c3a_scale_evidence_router.py`：主分支选择、惰性 pair fallback、静态 clip 和关系边定位测试。
+- `tests/test_p4c3a_multi_interval_size_prior.py`：非连续区间、alias 和最近区间对数距离测试。
+- `tests/test_p4c3a_robust_object_extent.py`：Mask 点云分位数范围与离群深度稳健性测试。
+- `tests/test_p4c3a_pair_fallback_policy.py`：disabled/audit/fallback 角色和 strict-v1/v2 冻结哈希测试。
+
+### 修改文件
+
+- `src/semantic3d/method_completion/__init__.py`：公开 MD2 契约、分支、路由、provider adapter 和兼容别名。
+- `src/semantic3d/method_completion/localization.py`：对象对残差映射到两个 Mask 与关系边，并提供无阈值对象证据排名。
+- `docs/DEV_LOG.md`：追加本记录。
+
+### 删除文件
+
+- 无。
+
+### 主要变化
+
+- 正式优先级固定为 `metric_single_object_scale`、`temporal_same_object_scale`、`relative_pair_scale_depth`；对象对默认策略为 `fallback_only`。
+- 投影模式使用 `H_hat=h_px*Z/fy` 和 `W_hat=w_px*Z/fx`；Mask 点云模式将有效米制 z-depth 反投影到 OpenCV 相机坐标，并使用 `[0.05, 0.95]` 分位数范围，未用裸 min/max 作为唯一估计。
+- 米制主分支只接受 metric/sensor_metric、meter、已知 depth definition、有效 K 和物理先验。相对深度、未知定义、近似内参（默认）、provider failure、严重截断及低质量区域均输出 `NaN + failure_reason`。
+- 高度、宽度和深度范围分别判断可观测性；一个维度失败不会自动使其他维度失效。
+- 多区间残差为 `min_j distance(log(S_hat), [log(S_min_j), log(S_max_j)])`，落入任一区间为0，且不把明显多峰子类强行扩成一个连续区间。
+- 时序分支支持 previous-valid、rolling median、track median 和 robust window；禁止跨视频、跨 clip、跨 track、跨 provider、跨 depth definition 或跨内参历史混用。relative-local 只输出 `relative_local_unit`。
+- strict-v2 只读取既有行并适配统一 evidence，不重算或改变旧公式；audit evidence 默认不能进入主聚合。
+- 静态/低运动 clip 仍可使用静态尺度分支；动态 D1/D2/D3 不适用不等于 provider failure。
+- 四个米制 provider 当前均为 `interface_only/not_executed` 骨架，不自动安装依赖、不下载权重、不声称传感器真值。
+
+### 六视频只读审计
+
+- 6 个视频、59 个 clip、2455 条对象观测。
+- `metric_single_object_scale` 实际执行数为0：现有深度全部是单目 `relative_per_frame`，不是米制深度。
+- `temporal_same_object_scale` 实际执行数为0：虽有可复用 track，但没有物化按维度且局部尺度已对齐的尺度历史，未伪造执行结果。
+- 历史 strict-v2 共299条记录，其中278个实际对象对、20个有效 pair；其余包含21条 `insufficient_objects` 帧级记录。strict-v2 文件只读且前后 SHA-256 一致。
+- 当前审计证明代码路径、门控和 fallback 语义，不证明真假检测有效性。
+
+### 验证命令
+
+```bash
+.venv/bin/python scripts/run_p4c3a_metric_primary_refactor.py
+
+.venv/bin/python -m pytest \
+  tests/test_p4c3a_metric_single_object_primary.py \
+  tests/test_p4c3a_temporal_same_object_scale.py \
+  tests/test_p4c3a_scale_evidence_router.py \
+  tests/test_p4c3a_multi_interval_size_prior.py \
+  tests/test_p4c3a_robust_object_extent.py \
+  tests/test_p4c3a_pair_fallback_policy.py -v
+
+.venv/bin/python -m pytest -q -rs
+```
+
+### 验证结果
+
+- MD2 六个专项文件：35 passed。
+- MD2 与原 P4-C3A-M 联合专项：49 passed。
+- 全量回归：567 passed、5 skipped、0 failed，耗时约115.60秒。
+- 5个 skip 均为既有外部资源条件：pose weight/real_3 observation 缺失、P3 shared cache 缺失、2项旧 shared-geometry smoke 产物缺失、strict-v2 六视频输出不是提交 fixture。
+- 唯一 warning 为当前 NVIDIA driver 与已装 PyTorch CUDA build 不兼容；本轮未运行 CUDA 或大型模型。
+- strict-v1/v2、P4-C0/C1/C2、历史 strict-v2 CSV、D1 evidence table 和 P4-C3A-M D2 合成产物均未写入；冻结复核通过。
+
+### 冻结哈希
+
+- strict-v1：`e86466e19fe3e1663fa855fdf73843cf7ab8b5b6c8fa8771aa46172f6b726a6b`。
+- strict-v2：`3c55c8eb42e19d2447b00794085d8e6fa233c37a2071ef51f23b447d23ef268b`。
+- P4-C0 config：`8a4a8f5d6ac795646876042a84c9b0a4fdb1d06bec31045b734c3dfb64f8a304`。
+- P4-C1 config：`ec48e26da4f434a1356959997b546ac30dc9e439281b2e09174f7c86a35ce086`；manifest：`3bfa3cc030adc29d1bfd6374d36ee17ad9f4a6fedb48f7b882549bcba4ad57a3`。
+- P4-C2 config：`fe8c3cda137337330209528f4025d0593fefa42886be89eb214bfd58d38a8d89`；readiness manifest：`2094a721bc58c7cae1d567a41d9fd31542990a95f87f0927b87c31119280e981`。
+- strict-v2 历史 pair CSV：`057885df2d5a3adfa3d7bbc76d564091ecf1e3d9bada721e2e92e3fd55733a44`。
+- 既有 D1 point evidence table：`693f9c61ae3b16680373e3eef8f8e58af259544c9e61c2ce5e4dc072ea79797b`。
+- 既有 P4-C3A-M D2 合成验证：`ad3976d2ae31815d9bbd3da54ce9f0f39ccdcd8c9f5653260084fe89a417bc37`。
+
+### 当前限制
+
+- 当前四个米制深度 adapter 只定义接口和运行前检查，尚未实现/执行具体大型模型推理；`ready_for_server_metric_smoke` 表示几何、路由和审计已就绪，不表示 provider 已跑通。
+- 当前 K 主要来自近似焦距；默认 metric gate 不接受 approximate intrinsics。服务器 smoke 仍需可信内参或单独批准其不确定性路径。
+- 现有六视频没有米制深度，因此不能生成真实 `R_metric_abs`；relative-local 时序尺寸历史也尚未物化。
+- strict-v2 20个有效 pair 仅用于冻结 fallback 回归，不代表新主分支有效性或真假性能。
+- 未训练、未拟合、未选阈值、未计算 AUC/F1/accuracy，`method_effectiveness_established=false`。
+
+### 下一步计划
+
+- 在服务器选择一个明确输出单位和 depth definition 的米制 provider，准备本地依赖和权重后单独实现并运行小规模 metric smoke。
+- 为 smoke 帧提供可信 K 或记录经过审核的内参来源，先验证米制尺寸闭环和 provider 间尺度偏差，不直接评价真假。
+- 将通过门控的按维度尺度观测物化为 track history，再验证 metric 与 relative-local 的时序路径。
+- metric smoke 通过且冻结回归保持不变后，再决定是否进入正式批量特征构建；本阶段不启动训练或性能评估。

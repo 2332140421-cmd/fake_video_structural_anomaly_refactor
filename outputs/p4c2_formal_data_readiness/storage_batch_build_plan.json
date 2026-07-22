@@ -1,0 +1,226 @@
+{
+  "batch_count": 10,
+  "batch_frame_count": 10000,
+  "batches": [
+    {
+      "batch_id": "batch_001",
+      "deletable_after_validation_bytes": 6248459792,
+      "expected_download_bytes": 169124767,
+      "failure_recovery": "resume_from_last_validated_stage_status_without_deleting_verified_prior_batches",
+      "fits_audited_snapshot": true,
+      "frame_count": 10000,
+      "frame_end_exclusive": 10000,
+      "frame_start": 0,
+      "permanent_retained_bytes": 24058215427,
+      "rebuildable_cache_bytes": 9999990,
+      "required_available_before_batch_bytes": 46402802589,
+      "temporary_peak_bytes": 30296675229,
+      "validation_steps": [
+        "verify_official_checksums",
+        "validate_manifest_row_counts",
+        "validate_array_references_and_sha256",
+        "write_stage_status_atomically"
+      ]
+    },
+    {
+      "batch_id": "batch_002",
+      "deletable_after_validation_bytes": 6248459792,
+      "expected_download_bytes": 169124767,
+      "failure_recovery": "resume_from_last_validated_stage_status_without_deleting_verified_prior_batches",
+      "fits_audited_snapshot": false,
+      "frame_count": 10000,
+      "frame_end_exclusive": 20000,
+      "frame_start": 10000,
+      "permanent_retained_bytes": 24058215427,
+      "rebuildable_cache_bytes": 9999990,
+      "required_available_before_batch_bytes": 70461018016,
+      "temporary_peak_bytes": 30296675229,
+      "validation_steps": [
+        "verify_official_checksums",
+        "validate_manifest_row_counts",
+        "validate_array_references_and_sha256",
+        "write_stage_status_atomically"
+      ]
+    },
+    {
+      "batch_id": "batch_003",
+      "deletable_after_validation_bytes": 6248459792,
+      "expected_download_bytes": 169124767,
+      "failure_recovery": "resume_from_last_validated_stage_status_without_deleting_verified_prior_batches",
+      "fits_audited_snapshot": false,
+      "frame_count": 10000,
+      "frame_end_exclusive": 30000,
+      "frame_start": 20000,
+      "permanent_retained_bytes": 24058215427,
+      "rebuildable_cache_bytes": 9999990,
+      "required_available_before_batch_bytes": 94519233443,
+      "temporary_peak_bytes": 30296675229,
+      "validation_steps": [
+        "verify_official_checksums",
+        "validate_manifest_row_counts",
+        "validate_array_references_and_sha256",
+        "write_stage_status_atomically"
+      ]
+    },
+    {
+      "batch_id": "batch_004",
+      "deletable_after_validation_bytes": 6248459792,
+      "expected_download_bytes": 169124767,
+      "failure_recovery": "resume_from_last_validated_stage_status_without_deleting_verified_prior_batches",
+      "fits_audited_snapshot": false,
+      "frame_count": 10000,
+      "frame_end_exclusive": 40000,
+      "frame_start": 30000,
+      "permanent_retained_bytes": 24058215427,
+      "rebuildable_cache_bytes": 9999990,
+      "required_available_before_batch_bytes": 118577448870,
+      "temporary_peak_bytes": 30296675229,
+      "validation_steps": [
+        "verify_official_checksums",
+        "validate_manifest_row_counts",
+        "validate_array_references_and_sha256",
+        "write_stage_status_atomically"
+      ]
+    },
+    {
+      "batch_id": "batch_005",
+      "deletable_after_validation_bytes": 6248459792,
+      "expected_download_bytes": 169124767,
+      "failure_recovery": "resume_from_last_validated_stage_status_without_deleting_verified_prior_batches",
+      "fits_audited_snapshot": false,
+      "frame_count": 10000,
+      "frame_end_exclusive": 50000,
+      "frame_start": 40000,
+      "permanent_retained_bytes": 24058215427,
+      "rebuildable_cache_bytes": 9999990,
+      "required_available_before_batch_bytes": 142635664297,
+      "temporary_peak_bytes": 30296675229,
+      "validation_steps": [
+        "verify_official_checksums",
+        "validate_manifest_row_counts",
+        "validate_array_references_and_sha256",
+        "write_stage_status_atomically"
+      ]
+    },
+    {
+      "batch_id": "batch_006",
+      "deletable_after_validation_bytes": 6248459792,
+      "expected_download_bytes": 169124767,
+      "failure_recovery": "resume_from_last_validated_stage_status_without_deleting_verified_prior_batches",
+      "fits_audited_snapshot": false,
+      "frame_count": 10000,
+      "frame_end_exclusive": 60000,
+      "frame_start": 50000,
+      "permanent_retained_bytes": 24058215427,
+      "rebuildable_cache_bytes": 9999990,
+      "required_available_before_batch_bytes": 166693879724,
+      "temporary_peak_bytes": 30296675229,
+      "validation_steps": [
+        "verify_official_checksums",
+        "validate_manifest_row_counts",
+        "validate_array_references_and_sha256",
+        "write_stage_status_atomically"
+      ]
+    },
+    {
+      "batch_id": "batch_007",
+      "deletable_after_validation_bytes": 6248459792,
+      "expected_download_bytes": 169124767,
+      "failure_recovery": "resume_from_last_validated_stage_status_without_deleting_verified_prior_batches",
+      "fits_audited_snapshot": false,
+      "frame_count": 10000,
+      "frame_end_exclusive": 70000,
+      "frame_start": 60000,
+      "permanent_retained_bytes": 24058215427,
+      "rebuildable_cache_bytes": 9999990,
+      "required_available_before_batch_bytes": 190752095151,
+      "temporary_peak_bytes": 30296675229,
+      "validation_steps": [
+        "verify_official_checksums",
+        "validate_manifest_row_counts",
+        "validate_array_references_and_sha256",
+        "write_stage_status_atomically"
+      ]
+    },
+    {
+      "batch_id": "batch_008",
+      "deletable_after_validation_bytes": 6248459792,
+      "expected_download_bytes": 169124767,
+      "failure_recovery": "resume_from_last_validated_stage_status_without_deleting_verified_prior_batches",
+      "fits_audited_snapshot": false,
+      "frame_count": 10000,
+      "frame_end_exclusive": 80000,
+      "frame_start": 70000,
+      "permanent_retained_bytes": 24058215427,
+      "rebuildable_cache_bytes": 9999990,
+      "required_available_before_batch_bytes": 214810310578,
+      "temporary_peak_bytes": 30296675229,
+      "validation_steps": [
+        "verify_official_checksums",
+        "validate_manifest_row_counts",
+        "validate_array_references_and_sha256",
+        "write_stage_status_atomically"
+      ]
+    },
+    {
+      "batch_id": "batch_009",
+      "deletable_after_validation_bytes": 6248459792,
+      "expected_download_bytes": 169124767,
+      "failure_recovery": "resume_from_last_validated_stage_status_without_deleting_verified_prior_batches",
+      "fits_audited_snapshot": false,
+      "frame_count": 10000,
+      "frame_end_exclusive": 90000,
+      "frame_start": 80000,
+      "permanent_retained_bytes": 24058215427,
+      "rebuildable_cache_bytes": 9999990,
+      "required_available_before_batch_bytes": 238868526005,
+      "temporary_peak_bytes": 30296675229,
+      "validation_steps": [
+        "verify_official_checksums",
+        "validate_manifest_row_counts",
+        "validate_array_references_and_sha256",
+        "write_stage_status_atomically"
+      ]
+    },
+    {
+      "batch_id": "batch_010",
+      "deletable_after_validation_bytes": 6248459792,
+      "expected_download_bytes": 169124767,
+      "failure_recovery": "resume_from_last_validated_stage_status_without_deleting_verified_prior_batches",
+      "fits_audited_snapshot": false,
+      "frame_count": 10000,
+      "frame_end_exclusive": 100000,
+      "frame_start": 90000,
+      "permanent_retained_bytes": 24058215427,
+      "rebuildable_cache_bytes": 9999990,
+      "required_available_before_batch_bytes": 262926741432,
+      "temporary_peak_bytes": 30296675229,
+      "validation_steps": [
+        "verify_official_checksums",
+        "validate_manifest_row_counts",
+        "validate_array_references_and_sha256",
+        "write_stage_status_atomically"
+      ]
+    }
+  ],
+  "build_blocked_insufficient_storage": true,
+  "downloads_performed": false,
+  "feasible_batch_count_without_archiving": 1,
+  "formal_build_started": false,
+  "formal_total_permanent_bytes": 240582154268,
+  "formal_total_source_bytes": 1691247662,
+  "formal_total_temporary_peak_bytes": 302966752285,
+  "full_build_fits_audited_snapshot": false,
+  "full_build_required_with_safety_bytes": 319072879645,
+  "planned_frame_count": 100000,
+  "planning_only": true,
+  "safe_space_policy": "temporary_peak_plus_safety_margin_must_fit_before_start",
+  "storage_snapshot": {
+    "audited_at": "2026-07-22",
+    "available_bytes": 55817076736,
+    "path": "/mnt/e",
+    "safety_margin_bytes": 16106127360,
+    "snapshot_source": "df_-B1_/mnt/e",
+    "total_bytes": 149502816256
+  }
+}

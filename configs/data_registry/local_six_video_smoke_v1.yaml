@@ -1,0 +1,26 @@
+dataset_id: local_six_video_protocol_smoke
+version: local_v1
+official_source: unknown_user_provided_or_generated_media
+license: unverified
+citation: not_applicable_until_source_is_verified
+official_split: none
+download_method: manual_server_placement_only
+server_root: ${DATA_ROOT}/tests_videos
+source_lineage_policy: >-
+  Original source identity and redistribution permission must be verified before
+  any sample can enter a formal split.
+dataset_role: geometry_validation_smoke
+is_formal_dataset: false
+eligible_for_training: false
+eligible_for_model_selection: false
+eligible_for_threshold_selection: false
+eligible_for_final_evaluation: false
+redistribution_allowed: false
+git_upload_allowed: false
+expected_checksums:
+  tests_real_videos/real_1.mp4: c85cdd48ffe7f9722f3a7302202c7fc5d1fae93ad6ead6b75d3a34d9e74ee174
+  tests_real_videos/real_2.mp4: c833105a2514a32b11e8ceab387754f695841df8ec2978fa5177f32aa13aa124
+  tests_real_videos/real_3.mp4: 807c91abd1402b1f7b54d5ae30ace18a7f35cbc8a208c939cf0e2912cc10c200
+  tests_real_videos/real_4.mp4: 70757851a0e9615fdde3cf1d38fae8e932246fa9acd580e9d22dd3310e606824
+  tests_fake_videos/fake_1.mp4: 3603227d21d0dd2faf8690e90d577f1cc4ffb3884bb20459d02666fdbcd0f102
+  tests_fake_videos/fake_2.mp4: f225bd4572313c5fd385be4dab951c57652a40d3a1eeb2a34de9bf7c8bea9e04

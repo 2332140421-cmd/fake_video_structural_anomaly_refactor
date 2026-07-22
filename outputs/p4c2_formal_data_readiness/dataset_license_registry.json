@@ -1,0 +1,16 @@
+{
+  "licenses": [
+    {
+      "citation": "not_applicable_local_user_data",
+      "dataset_name": "local_six_video_protocol_smoke",
+      "download_method": "not_downloadable_local_user_data",
+      "license": "publication_and_redistribution_rights_require_manual_confirmation",
+      "license_verification_status": "unverified",
+      "official_source": "user_provided_local_files",
+      "redistribution_allowed": null,
+      "review_required": true,
+      "version": "p4b5_full_observation_v1"
+    }
+  ],
+  "schema_version": "dataset_license_registry_v1"
+}

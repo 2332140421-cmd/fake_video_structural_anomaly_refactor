@@ -1,0 +1,4 @@
+# Install a server-compatible PyTorch build before this file.
+# These are the top-level inference versions verified by P4-C3A locally.
+transformers==5.13.0
+ultralytics==8.4.90

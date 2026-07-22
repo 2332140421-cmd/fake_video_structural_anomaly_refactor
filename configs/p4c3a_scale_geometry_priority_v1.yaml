@@ -1,0 +1,71 @@
+schema_version: p4c3a_scale_geometry_priority_v1
+created_for: P4-C3A-MD2
+
+scale_geometry:
+  branch_priority:
+    - metric_single_object_scale
+    - temporal_same_object_scale
+    - relative_pair_scale_depth
+
+  primary_branch:
+    enabled: true
+    require_metric_depth: true
+    require_depth_unit: meter
+    require_known_depth_definition: true
+    allow_approximated_intrinsics: false
+    extent_estimators:
+      - projected_extent
+      - mask_pointcloud_extent
+    default_extent_estimator: mask_pointcloud_extent
+    min_detection_confidence: 0.30
+    min_depth_confidence: 0.30
+    min_valid_depth_ratio: 0.50
+    robust_extent_quantiles: [0.05, 0.95]
+
+  temporal_branch:
+    enabled: true
+    allow_metric_mode: true
+    allow_relative_local_mode: true
+    reference_method: rolling_median
+    min_valid_history: 2
+    reference_window: 5
+    prohibit_cross_video: true
+    prohibit_cross_clip: true
+    prohibit_provider_switch: true
+    prohibit_depth_definition_switch: true
+
+  pair_branch:
+    enabled: true
+    policy: fallback_only
+    audit_crosscheck_enabled: false
+    preserve_strict_v2: true
+    strict_v2_config: configs/scale_priors_strict_v2.yaml
+
+  residual:
+    space: log
+    missing_value: nan
+    audit_crosscheck_in_primary_aggregate: false
+
+  localization:
+    retain_object_reference: true
+    retain_track_reference: true
+    retain_mask_reference: true
+    retain_pair_relation_edge: true
+
+metric_depth:
+  enabled: false
+  providers: []
+  automatic_download_allowed: false
+  permitted_depth_types: [metric, sensor_metric]
+  required_unit: meter
+  model_prediction_status: model_predicted
+  sensor_ground_truth_claim_allowed: false
+
+compatibility:
+  strict_v1_frozen: true
+  strict_v2_frozen: true
+  legacy_branch_aliases:
+    AbsoluteSemanticScaleBranch: metric_single_object_scale
+    CrossFrameScaleStabilityBranch: temporal_same_object_scale
+    RelativeScaleDepthBranch: relative_pair_scale_depth
+  existing_six_video_results_must_not_change: true

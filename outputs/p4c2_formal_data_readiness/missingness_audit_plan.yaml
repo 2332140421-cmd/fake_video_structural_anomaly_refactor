@@ -1,0 +1,36 @@
+compare_authenticity_only_after_split_freeze: true
+exclude_test_performance_from_readiness: true
+mitigation:
+- report_coverage_by_stratum
+- audit_provider_failure_correlation_before_modeling
+- perform_coverage_feature_ablation_if_coverage_enters_model
+- prevent_provider_name_or_failure_reason_from_becoming_authenticity_shortcuts
+modalities:
+- objects
+- depth
+- camera_pose
+- tracks
+- semantic3d
+never_impute_missing_as_zero: true
+never_use_provider_failure_as_residual: true
+planning_only: true
+provider_failure_is_anomaly_evidence: false
+required_statistics:
+- sample_count
+- available_count
+- unavailable_count
+- availability_ratio
+- failure_reason_counts
+schema_version: p4c2_missingness_audit_plan_v1
+states:
+- available
+- unknown
+- not_applicable
+- provider_failed
+stratify_by:
+- authenticity_label
+- dataset_name
+- original_source_id
+- source_group_id
+- provider_name
+test_performance_values_read: false

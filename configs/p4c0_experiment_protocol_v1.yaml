@@ -1,0 +1,37 @@
+protocol:
+  version: p4c0_experiment_protocol_v1
+  random_seed: 20260722
+  protocol_smoke_only: true
+  preserve_declared_smoke_split: true
+
+inputs:
+  structural_dataset_root: outputs/structural_enhancement_dataset/p4b5_six_video_full_observation
+  labels_manifest: data/manifests/pilot_real_fake.csv
+
+output_root: data/experiment_protocol_v1
+
+dataset_catalog:
+  dataset_name: local_six_video_protocol_smoke
+  dataset_version: p4b5_full_observation_v1
+  license_or_usage_note: User-provided local videos; publication and redistribution rights require manual confirmation.
+  roles:
+    - geometry_validation
+
+split:
+  train: 0.70
+  validation: 0.15
+  test: 0.15
+
+duplicate_audit:
+  perceptual_sample_count: 5
+  near_duplicate_threshold: 0.92
+
+coverage_planning:
+  shortcut_difference_threshold: 0.20
+
+storage:
+  planned_frame_count: 100000
+  source_root: /mnt/e/fake_video_structural_data/source
+  dataset_output_root: /mnt/e/fake_video_structural_data/datasets
+  cache_root: /mnt/e/fake_video_structural_data/cache
+  archive_root: /mnt/e/fake_video_structural_data/archive

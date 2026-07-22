@@ -1,0 +1,68 @@
+{
+  "basis": {
+    "linear_scaling_assumption": true,
+    "measured_frame_count": 984,
+    "measured_total_bytes": 2367328398,
+    "planned_frame_count": 100000,
+    "structural_dataset_root": "/home/chenyh/fake_video_structural_anomaly/outputs/structural_enhancement_dataset/p4b5_six_video_full_observation"
+  },
+  "data_copied": false,
+  "formal_build_estimate": {
+    "cache_bytes": 99999898,
+    "dataset_output_bytes": 240582154268,
+    "runtime_assumption": "planning range 1-5 CPU seconds/frame; benchmark before acquisition freeze",
+    "runtime_hours_high": 138.88888888888889,
+    "runtime_hours_low": 27.77777777777778,
+    "source_video_bytes": 1691247662,
+    "temporary_peak_bytes": 302966752285
+  },
+  "measured_categories": {
+    "cache_bytes": 983999,
+    "depth_arrays_bytes": 2222481985,
+    "final_parquet_and_reports_bytes": 7085544,
+    "frames_bytes": 130790697,
+    "mask_arrays_bytes": 5809176,
+    "point_and_3d_tables_bytes": 5847734,
+    "shared_3d_arrays_bytes": 173259,
+    "source_video_bytes": 16641877
+  },
+  "ntfs_small_file_warning": "WSL access to /mnt/e is suitable for large archives and arrays but many small files may be slower than the Linux filesystem; prefer sharded arrays/Parquet and a Linux-local active cache.",
+  "paths": {
+    "archive_root": {
+      "configured_path": "/mnt/e/fake_video_structural_data/archive",
+      "exists": false,
+      "free_bytes": 119186157568,
+      "probed_existing_path": "/mnt/e",
+      "total_bytes": 149502816256,
+      "used_bytes": 30316658688,
+      "writable": true
+    },
+    "cache_root": {
+      "configured_path": "/mnt/e/fake_video_structural_data/cache",
+      "exists": false,
+      "free_bytes": 119186157568,
+      "probed_existing_path": "/mnt/e",
+      "total_bytes": 149502816256,
+      "used_bytes": 30316658688,
+      "writable": true
+    },
+    "dataset_output_root": {
+      "configured_path": "/mnt/e/fake_video_structural_data/datasets",
+      "exists": false,
+      "free_bytes": 119186157568,
+      "probed_existing_path": "/mnt/e",
+      "total_bytes": 149502816256,
+      "used_bytes": 30316658688,
+      "writable": true
+    },
+    "source_root": {
+      "configured_path": "/mnt/e/fake_video_structural_data/source",
+      "exists": false,
+      "free_bytes": 119186157568,
+      "probed_existing_path": "/mnt/e",
+      "total_bytes": 149502816256,
+      "used_bytes": 30316658688,
+      "writable": true
+    }
+  }
+}

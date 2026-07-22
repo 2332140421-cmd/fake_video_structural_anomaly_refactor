@@ -1,0 +1,16 @@
+{
+  "coverage_feature_ablation_required_if_used": true,
+  "provider_failure_is_anomaly_evidence": false,
+  "risk_count": 1,
+  "risks": [
+    {
+      "absolute_class_difference": 0.43824424163407216,
+      "metric": "frame_shared_3d_coverage",
+      "recommended_action": "stratify_or_balance_and_ablate_coverage_features",
+      "shortcut_risk": true,
+      "split": "validation"
+    }
+  ],
+  "shortcut_risk": true,
+  "small_sample_warning": true
+}

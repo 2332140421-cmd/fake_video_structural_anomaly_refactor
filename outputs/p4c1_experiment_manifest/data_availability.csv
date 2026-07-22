@@ -1,0 +1,10 @@
+modality,sample_count,available_sample_count,missing_sample_count,availability_ratio,total_valid_observations,required_for_usable
+video,59,59,0,1.0,59,True
+frames,59,59,0,1.0,2308,True
+objects,59,50,9,0.847457627118644,5624,True
+depth,59,59,0,1.0,2308,True
+camera,59,59,0,1.0,2308,True
+pose,59,0,59,0.0,0,False
+tracks,59,44,15,0.7457627118644068,80836,False
+semantic3d,59,45,14,0.7627118644067796,1523,False
+camera_identity,59,0,59,0.0,0,False

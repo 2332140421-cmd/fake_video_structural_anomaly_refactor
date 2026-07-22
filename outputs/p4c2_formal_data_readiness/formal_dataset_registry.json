@@ -1,0 +1,48 @@
+{
+  "datasets": [
+    {
+      "annotation_types": [
+        "binary_authenticity_only",
+        "geometry_provider_outputs"
+      ],
+      "checksum_policy": "sha256_per_source_video_and_structural_artifact",
+      "citation": "not_applicable_local_user_data",
+      "dataset_name": "local_six_video_protocol_smoke",
+      "dataset_role": "geometry_validation_smoke",
+      "download_method": "not_downloadable_local_user_data",
+      "eligible_for_final_evaluation": false,
+      "eligible_for_formal_split": false,
+      "eligible_for_model_selection": false,
+      "eligible_for_threshold_selection": false,
+      "eligible_for_training": false,
+      "expected_size": {
+        "source_frame_count": 984,
+        "source_video_bytes": 16641877,
+        "source_video_count": 6,
+        "structural_dataset_bytes": 2367328398
+      },
+      "is_formal_dataset": false,
+      "license": "publication_and_redistribution_rights_require_manual_confirmation",
+      "local_root": "data/tests_videos",
+      "metadata": {
+        "formal_candidate": false,
+        "license_verification_status": "unverified",
+        "local_root_exists": true,
+        "metadata_inventory_only": true,
+        "p4c1_split_is_not_formal_split": true,
+        "redistribution_allowed": null
+      },
+      "missing_requirements": [
+        "official_dataset_source",
+        "official_or_formal_group_aware_split",
+        "verified_license",
+        "verified_original_source_identity"
+      ],
+      "official_source": "user_provided_local_files",
+      "official_split": "unavailable",
+      "registry_status": "smoke_only_unverified",
+      "version": "p4b5_full_observation_v1"
+    }
+  ],
+  "schema_version": "formal_dataset_registry_v1"
+}

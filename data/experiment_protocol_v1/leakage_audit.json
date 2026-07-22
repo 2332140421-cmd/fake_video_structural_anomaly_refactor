@@ -1,0 +1,17 @@
+{
+  "conflict_count": 0,
+  "conflicts": [],
+  "error_count": 0,
+  "labels_read_by_structural_builder": false,
+  "normalization_fit_splits": [
+    "train"
+  ],
+  "reported_conflict_types": [],
+  "residual_values_used_for_split": false,
+  "source_group_review_required_count": 6,
+  "test_used_for_normalization_fit": false,
+  "test_used_for_threshold_tuning": false,
+  "threshold_tuning_splits": [
+    "validation"
+  ]
+}

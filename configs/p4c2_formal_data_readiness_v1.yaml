@@ -1,0 +1,124 @@
+p4c2:
+  version: p4c2_formal_data_readiness_v1
+  random_seed: 20260722
+  scope: formal_dataset_onboarding_and_build_readiness_only
+  deterministic_sorting: true
+
+inputs:
+  p4c0_protocol_root: data/experiment_protocol_v1
+  p4c1_manifest_root: outputs/p4c1_experiment_manifest
+  p4c0_storage_estimate: data/experiment_protocol_v1/storage_estimate.json
+  formal_lineage_jsonl: []
+
+output_root: outputs/p4c2_formal_data_readiness
+
+datasets:
+  - dataset_name: local_six_video_protocol_smoke
+    version: p4b5_full_observation_v1
+    official_source: user_provided_local_files
+    license: publication_and_redistribution_rights_require_manual_confirmation
+    citation: not_applicable_local_user_data
+    download_method: not_downloadable_local_user_data
+    official_split: unavailable
+    annotation_types:
+      - binary_authenticity_only
+      - geometry_provider_outputs
+    expected_size:
+      source_video_count: 6
+      source_frame_count: 984
+      source_video_bytes: 16641877
+      structural_dataset_bytes: 2367328398
+    checksum_policy: sha256_per_source_video_and_structural_artifact
+    local_root: data/tests_videos
+    dataset_role: geometry_validation_smoke
+    eligible_for_training: false
+    eligible_for_model_selection: false
+    eligible_for_threshold_selection: false
+    eligible_for_final_evaluation: false
+    registry_status: smoke_only_unverified
+    missing_requirements:
+      - official_dataset_source
+      - verified_license
+      - official_or_formal_group_aware_split
+      - verified_original_source_identity
+    metadata:
+      license_verification_status: unverified
+      redistribution_allowed: null
+      p4c1_split_is_not_formal_split: true
+      formal_candidate: false
+
+formal_split:
+  official_split_priority: true
+  group_key: original_source_id
+  fallback_group_key: source_group_id
+  algorithm_version: verified_source_group_hash_v1
+  ratios:
+    train: 0.70
+    validation: 0.15
+    test: 0.15
+  official_split_by_video: {}
+
+storage:
+  path: /mnt/e
+  audited_at: "2026-07-22"
+  snapshot_source: df_-B1_/mnt/e
+  audited_total_bytes: 149502816256
+  audited_available_bytes: 55817076736
+  safety_margin_bytes: 16106127360
+  batch_frame_count: 10000
+  block_when_full_peak_does_not_fit: true
+
+missingness_audit_plan:
+  schema_version: p4c2_missingness_audit_plan_v1
+  stratify_by:
+    - authenticity_label
+    - dataset_name
+    - original_source_id
+    - source_group_id
+    - provider_name
+  modalities:
+    - objects
+    - depth
+    - camera_pose
+    - tracks
+    - semantic3d
+  states:
+    - available
+    - unknown
+    - not_applicable
+    - provider_failed
+  required_statistics:
+    - sample_count
+    - available_count
+    - unavailable_count
+    - availability_ratio
+    - failure_reason_counts
+  compare_authenticity_only_after_split_freeze: true
+  never_use_provider_failure_as_residual: true
+  never_impute_missing_as_zero: true
+  exclude_test_performance_from_readiness: true
+  mitigation:
+    - report_coverage_by_stratum
+    - audit_provider_failure_correlation_before_modeling
+    - perform_coverage_feature_ablation_if_coverage_enters_model
+    - prevent_provider_name_or_failure_reason_from_becoming_authenticity_shortcuts
+
+compatibility:
+  p4c0_semantics_unchanged: true
+  p4c1_manifest_unchanged: true
+  strict_prior_hashes:
+    scale_priors_strict_v1.yaml: e86466e19fe3e1663fa855fdf73843cf7ab8b5b6c8fa8771aa46172f6b726a6b
+    scale_priors_strict_v2.yaml: 3c55c8eb42e19d2447b00794085d8e6fa233c37a2071ef51f23b447d23ef268b
+
+forbidden_operations:
+  download_datasets: false
+  run_model_inference: false
+  extract_large_scale_features: false
+  train_model: false
+  fit_parameters: false
+  fit_distribution: false
+  select_threshold: false
+  read_test_performance: false
+  compute_authenticity_performance: false
+  start_formal_batch_build: false
+

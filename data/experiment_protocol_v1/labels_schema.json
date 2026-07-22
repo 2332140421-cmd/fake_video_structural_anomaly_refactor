@@ -1,0 +1,31 @@
+{
+  "annotation_quality_required": true,
+  "annotation_source_required": true,
+  "binary_video_label": {
+    "unknown": null,
+    "values": {
+      "0": "real",
+      "1": "fake"
+    }
+  },
+  "label_inference_from_filename_allowed": false,
+  "manipulation_type": {
+    "unknown_value": "unknown"
+  },
+  "object_annotation": {
+    "not_available": ""
+  },
+  "schema_version": "p4c0_label_schema_v1",
+  "source_group_id_required": true,
+  "source_manifest": "/home/chenyh/fake_video_structural_anomaly/data/manifests/pilot_real_fake.csv",
+  "spatial_bbox": {
+    "not_available": []
+  },
+  "spatial_mask": {
+    "not_available": ""
+  },
+  "temporal_intervals": {
+    "not_available": [],
+    "unit": "seconds_or_frame_range"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "checks": {
+    "camera_identity_not_fabricated": true,
+    "csv_jsonl_row_count_matches": true,
+    "deterministic_rebuild_matches": true,
+    "excluded_samples_have_reason": true,
+    "leakage_error_free": true,
+    "manifest_hash_matches": true,
+    "metadata_rebuild_hash_matches": true,
+    "no_training_or_fitting": true,
+    "protocol_hash_present": true,
+    "sample_ids_unique": true,
+    "sample_order_deterministic": true,
+    "source_video_not_cross_split": true,
+    "usable_samples_have_no_reason": true
+  },
+  "deterministic_rebuild_sha256": "3bfa3cc030adc29d1bfd6374d36ee17ad9f4a6fedb48f7b882549bcba4ad57a3",
+  "error_count": 0,
+  "errors": [],
+  "manifest_sha256": "3bfa3cc030adc29d1bfd6374d36ee17ad9f4a6fedb48f7b882549bcba4ad57a3",
+  "protocol_sha256": "004fb982597091e038bbb833370169626326f0ad5ecd0998fd61132ed1dffc12",
+  "sample_count": 59,
+  "training_or_fitting_performed": false,
+  "valid": true
+}

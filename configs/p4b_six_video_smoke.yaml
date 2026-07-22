@@ -1,0 +1,88 @@
+dataset:
+  name: p4b_six_video_smoke
+  output_root: outputs/structural_enhancement_dataset/p4b_six_video_smoke
+
+# Source entries contain paths only. The builder neither accepts nor derives
+# real/fake labels from directory names; labels remain a separate downstream join.
+sources:
+  videos:
+    - data/tests_videos/tests_real_videos/real_1.mp4
+    - data/tests_videos/tests_real_videos/real_2.mp4
+    - data/tests_videos/tests_real_videos/real_3.mp4
+    - data/tests_videos/tests_real_videos/real_4.mp4
+    - data/tests_videos/tests_fake_videos/fake_1.mp4
+    - data/tests_videos/tests_fake_videos/fake_2.mp4
+
+clip_split:
+  window_size: 32
+  left_context: 4
+  right_context: 4
+  stride: 16
+  minimum_clip_length: 4
+  scene_cut_threshold: 0.35
+
+providers:
+  object_provider: real_detector
+  instance_mask_provider: real_instance_mask_provider
+  keypoint_provider: ultralytics_yolov8_pose
+  depth_provider: depth_anything_v2_small_hf
+  depth_model: depth-anything/Depth-Anything-V2-Small
+  offline_only: true
+  weights:
+    object_detection: checkpoints/yolov8n.pt
+    instance_segmentation: checkpoints/yolov8n-seg.pt
+    human_keypoints: checkpoints/yolov8n-pose.pt
+
+artifacts:
+  p3d_coverage_root: outputs/real_3d_evidence_coverage_v2
+  p4a_aggregation_root: outputs/partial_p4_aggregation_smoke
+
+# This status comes from label-free P3 geometry diagnostics. Coordinate systems
+# remain clip-local and are never subtracted across clips without alignment.
+geometry_mode_by_source_name:
+  real_3: static_camera_3d
+
+branch_registry_version: p4a_registry_v1
+
+stages:
+  01_video_index:
+    scene_cut_method: mean_luma_signature
+  02_frame_decode:
+    image_format: jpg
+  03_object_detection:
+    migration_source: p3d_coverage_v2
+  04_instance_segmentation:
+    formal_masks_only: true
+  05_keypoints:
+    migration_scope: available_p3d_keypoint_coverage
+  06_depth:
+    full_video_source_names:
+      - real_3
+    representation: relative_depth
+    direction: larger_is_farther
+    conversion: reciprocal_inverse_to_relative
+    metric_depth: false
+  07_tracking:
+    preserve_source_track_ids: true
+  08_sequence_geometry:
+    depth_alignment: clip_background_median_scale
+    exclude_formal_foreground_masks: true
+  09_shared_3d:
+    coordinate_scope: clip_local
+    cross_clip_subtraction: false
+  10_static_evidence:
+    statistical_normalization: none
+  11_dynamic_evidence:
+    migrate_existing_formal_evidence: true
+  12_occlusion_evidence:
+    no_event_status: not_applicable
+  13_multilevel_aggregation:
+    training: false
+    classification: false
+
+runtime:
+  device: cpu
+  num_workers: 1
+  random_seed: 20260722
+  deterministic: true
+  fail_dataset_on_clip_error: false

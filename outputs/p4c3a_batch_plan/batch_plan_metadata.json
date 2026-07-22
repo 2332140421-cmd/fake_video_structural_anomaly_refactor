@@ -1,0 +1,18 @@
+{
+  "batch_count": 0,
+  "batch_plan_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "formal_batch_started": false,
+  "formal_download_performed": false,
+  "formal_processing_performed": false,
+  "validation": {
+    "batch_count": 0,
+    "checks": {
+      "all_batches_initially_planned": true,
+      "batch_ids_unique": true,
+      "no_batch_execution_started": true,
+      "source_groups_not_cross_split": true,
+      "source_groups_not_split_across_batches": true
+    },
+    "valid": true
+  }
+}

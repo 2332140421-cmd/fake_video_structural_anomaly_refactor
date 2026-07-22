@@ -1,0 +1,16 @@
+{
+  "artifacts": {
+    "build_metadata.json": "d257d04e51ac5e64863a0d46acb16bbba945f961dc715bb9840a66fb0024dd3c",
+    "data_inventory.csv": "be97eff0ba032f2c1d48d23e084ea1eca86576e1ca6da5dd19ef6e985febe87d",
+    "dataset_license_registry.json": "efbf7833d31bd27202ccceff8bdbd4a2147bd05dbad27540424e935e38ced8be",
+    "formal_dataset_registry.json": "1b8da68269ad4d547aa96896db6b536cc236ccc965617a53f904206853cee6cf",
+    "formal_split_plan.jsonl": "e36e7a5345ed7907bd86c7e15d0a0dc30a89353cd87af1c1c49a0d882340421f",
+    "missingness_audit_plan.yaml": "b0ef512570860246f2b3acda22979a18ef4ac7b64bd8659c3fbe374077c47d1b",
+    "p4c2_readiness_report.md": "b72800be5c04a5051fa3eef206ca59929632158ecae452b740e5749cd9dd3192",
+    "source_lineage.jsonl": "d02f7e49c34bd771d1709023e36a8a3f677ea60500fd3dc196bbd1f59ac522f7",
+    "source_lineage_leakage_audit.json": "7efc77ae54d673c9ac523803de1d7597ba14c2b4ce5916370318de3dc7bb5702",
+    "storage_batch_build_plan.json": "d351719868a97f05f568152d4888562a8a652b3f18db288c2d2447227c4c2851",
+    "task_eligibility_matrix.csv": "8e113c8397f891751a426a890a06595f38511f2297e97b9f0fb40d007192b356"
+  },
+  "hash_algorithm": "sha256"
+}

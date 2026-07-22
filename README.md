@@ -1,39 +1,43 @@
 # Fake Video Structural Anomaly Prototype
 
-This is a lightweight research prototype for object-aware 3D structural residuals.
-The current stage implements object-level scale-depth consistency residuals:
+This repository is a research prototype for object-aware 3D structural residuals.
+It contains frozen 2D/2.5D baselines, shared 3D observation contracts, static and
+dynamic structural evidence, and P4 experiment protocol tooling.
 
 - Ratio-space residual `R_sd`
 - Log-space residual `R_sd_log`
 - A small fusion interface reserved for future residual terms:
   `R_flow`, `R_track`, `R_depth_cons`, `R_occ`, and `R_corr`
 
-No model download or large pretrained dependency is required.
+Model weights and videos are intentionally excluded from Git. Their registries
+record acquisition instructions and SHA-256 values for reproducible setup.
 
 ## Run tests
 
 ```bash
-cd /home/chenyh/fake_video_structural_anomaly
+cd fake_video_structural_anomaly
 ./scripts/run_tests.sh
 ```
 
-The project-local Python environment is stored at:
+Create and use a project-local environment rather than copying one from another
+machine:
 
 ```bash
-/home/chenyh/fake_video_structural_anomaly/.venv/bin/python
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements-lock.txt
 ```
 
 Use this interpreter in VS Code or run:
 
 ```bash
-cd /home/chenyh/fake_video_structural_anomaly
-conda activate /home/chenyh/fake_video_structural_anomaly/.venv
-pytest tests
+.venv/bin/python -m pytest -q
 ```
 
 ## Run demo
 
 ```bash
-cd /home/chenyh/fake_video_structural_anomaly
-python examples/demo_scale_depth.py
+.venv/bin/python examples/demo_scale_depth.py
 ```
+
+Server setup is documented in `docs/SERVER_ENVIRONMENT.md` and
+`docs/SERVER_DATA_SETUP.md`.

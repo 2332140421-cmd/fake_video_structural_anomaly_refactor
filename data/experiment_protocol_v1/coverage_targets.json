@@ -1,0 +1,106 @@
+{
+  "planning_only": true,
+  "target_count": 11,
+  "targets": [
+    {
+      "currently_available": 6,
+      "desired_experiment_target": 150,
+      "desired_gap": 144,
+      "minimum_engineering_target": 30,
+      "minimum_gap": 24,
+      "target_name": "static_3d_video",
+      "unit": "video"
+    },
+    {
+      "currently_available": 16,
+      "desired_experiment_target": 150,
+      "desired_gap": 134,
+      "minimum_engineering_target": 30,
+      "minimum_gap": 14,
+      "target_name": "d1_dynamic_clip",
+      "unit": "clip"
+    },
+    {
+      "currently_available": 0,
+      "desired_experiment_target": 150,
+      "desired_gap": 150,
+      "minimum_engineering_target": 30,
+      "minimum_gap": 30,
+      "target_name": "d2_rotation_clip",
+      "unit": "clip"
+    },
+    {
+      "currently_available": 0,
+      "desired_experiment_target": 150,
+      "desired_gap": 150,
+      "minimum_engineering_target": 30,
+      "minimum_gap": 30,
+      "target_name": "d3_full_se3_clip",
+      "unit": "clip"
+    },
+    {
+      "currently_available": 1,
+      "desired_experiment_target": 200,
+      "desired_gap": 199,
+      "minimum_engineering_target": 30,
+      "minimum_gap": 29,
+      "target_name": "person_structure_track",
+      "unit": "track"
+    },
+    {
+      "currently_available": 6,
+      "desired_experiment_target": 300,
+      "desired_gap": 294,
+      "minimum_engineering_target": 50,
+      "minimum_gap": 44,
+      "target_name": "ordinary_structure_track",
+      "unit": "track"
+    },
+    {
+      "currently_available": 0,
+      "desired_experiment_target": 200,
+      "desired_gap": 200,
+      "minimum_engineering_target": 30,
+      "minimum_gap": 30,
+      "target_name": "partial_occlusion_event",
+      "unit": "event"
+    },
+    {
+      "currently_available": 0,
+      "desired_experiment_target": 200,
+      "desired_gap": 200,
+      "minimum_engineering_target": 30,
+      "minimum_gap": 30,
+      "target_name": "full_occlusion_event",
+      "unit": "event"
+    },
+    {
+      "currently_available": 0,
+      "desired_experiment_target": 100,
+      "desired_gap": 100,
+      "minimum_engineering_target": 20,
+      "minimum_gap": 20,
+      "target_name": "reappearance_event",
+      "unit": "event"
+    },
+    {
+      "currently_available": 0,
+      "desired_experiment_target": 300,
+      "desired_gap": 300,
+      "minimum_engineering_target": 50,
+      "minimum_gap": 50,
+      "target_name": "temporal_localization_annotated_video",
+      "unit": "video"
+    },
+    {
+      "currently_available": 0,
+      "desired_experiment_target": 300,
+      "desired_gap": 300,
+      "minimum_engineering_target": 50,
+      "minimum_gap": 50,
+      "target_name": "spatial_localization_annotated_video",
+      "unit": "video"
+    }
+  ],
+  "targets_not_fitted_from_residuals": true
+}

@@ -1,0 +1,40 @@
+{
+  "checks": {
+    "branch_eligibility_semantics": true,
+    "clip_not_cross_split": true,
+    "exact_duplicate_not_cross_split": true,
+    "labels_structural_isolation": true,
+    "near_duplicate_conflicts_marked": true,
+    "not_applicable_distinct_from_observation_missing": true,
+    "official_split_conflict_reported": true,
+    "source_group_complete": true,
+    "source_group_not_cross_split": true,
+    "spatial_annotation_gates_localization": true,
+    "split_does_not_read_residuals": true,
+    "storage_capacity_sufficient": false,
+    "storage_path_checked": true,
+    "temporal_annotation_gates_localization": true,
+    "test_not_normalization_fit_source": true,
+    "test_not_threshold_tuning_source": true,
+    "video_id_unique": true
+  },
+  "error_count": 0,
+  "errors": [],
+  "metrics": {
+    "annotation_availability_row_count": 6,
+    "branch_eligibility_row_count": 1170,
+    "clip_count": 59,
+    "duplicate_pair_count": 15,
+    "near_duplicate_conflict_count": 0,
+    "source_group_count": 6,
+    "source_group_review_required_count": 6,
+    "video_count": 6
+  },
+  "valid": true,
+  "warning_count": 3,
+  "warnings": [
+    "configured_dataset_output_root_has_insufficient_free_space_for_estimated_peak",
+    "source_group_review_required:6",
+    "six_video_protocol_smoke_only_not_formal_performance_data"
+  ]
+}

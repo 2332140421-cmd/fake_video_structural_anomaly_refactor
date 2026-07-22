@@ -1,0 +1,24 @@
+runtime_profile: server_template
+project_root: ${PROJECT_ROOT}
+data_root: ${DATA_ROOT}
+download_root: ${DOWNLOAD_ROOT}
+temporary_root: ${CACHE_ROOT}/tmp
+cache_root: ${CACHE_ROOT}
+model_root: ${MODEL_ROOT}
+output_root: ${OUTPUT_ROOT}
+log_root: ${LOG_ROOT}
+device: cuda
+num_workers: 8
+storage_safety_margin: 53687091200
+batch_storage_limit: 107374182400
+required_python_dependencies:
+  - numpy
+  - yaml
+  - pyarrow
+  - cv2
+  - torch
+  - ultralytics
+required_executables:
+  - ffmpeg
+  - ffprobe
+require_cuda_for_formal_batch: true

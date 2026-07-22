@@ -95,6 +95,27 @@ def test_camera_and_object_motion_prediction_recovers_current_observation() -> N
     assert result.residual_evidence.valid
 
 
+def test_strict_history_metadata_rejects_current_frame_leakage() -> None:
+    scene = _moving_scene()
+    result = compute_dynamic_reprojection_residual(
+        _point(scene, "object", 0),
+        _point2d(scene, "object", 1),
+        K_current=scene.K,
+        image_width=160,
+        image_height=120,
+        relative_pose_current_from_previous=scene.clip.relative_poses[1].relative_pose_from_previous,
+        geometry_mode=DynamicGeometryMode.FULL_SE3_3D,
+        is_background=False,
+        predicted_foreground_point_current_camera=scene.world_points["object"][1] - np.asarray([0.15, 0.0, 0.0]),
+        has_history_motion_model=True,
+        motion_model_type="test_history_model",
+        history_frames=(0, 1),
+        support_point_ids=("support",),
+    )
+    assert not result.valid
+    assert result.missing_reason == "motion_prediction_uses_current_frame"
+
+
 def test_foreground_camera_only_error_is_diagnostic_not_anomaly() -> None:
     scene = _moving_scene()
     result = compute_dynamic_reprojection_residual(

@@ -1,0 +1,23 @@
+{
+  "classification_performance_computed": false,
+  "cross_split_leakage_detected": false,
+  "deterministic_rebuild_matches": true,
+  "deterministic_rebuild_sha256": "3bfa3cc030adc29d1bfd6374d36ee17ad9f4a6fedb48f7b882549bcba4ad57a3",
+  "excluded_count": 9,
+  "leakage_error_count": 0,
+  "leakage_warning_count": 6,
+  "manifest_schema_version": "p4c1_experiment_manifest_v1",
+  "manifest_sha256": "3bfa3cc030adc29d1bfd6374d36ee17ad9f4a6fedb48f7b882549bcba4ad57a3",
+  "model_training_performed": false,
+  "p4c0_config_sha256": "8a4a8f5d6ac795646876042a84c9b0a4fdb1d06bec31045b734c3dfb64f8a304",
+  "p4c1_config_sha256": "ec48e26da4f434a1356959997b546ac30dc9e439281b2e09174f7c86a35ce086",
+  "protocol_sha256": "004fb982597091e038bbb833370169626326f0ad5ecd0998fd61132ed1dffc12",
+  "residual_values_read": false,
+  "sample_count": 59,
+  "source_manifest_sha256": "4d811340ed2ba69c80759a0ef025931e51dfc7dd73fa0a9f1ea456855fd2e633",
+  "split_frozen_from_p4c0": true,
+  "statistical_fitting_performed": false,
+  "structural_dataset_id": "dataset_1ae499fd7cdd9d8501dc",
+  "threshold_selection_performed": false,
+  "usable_count": 50
+}

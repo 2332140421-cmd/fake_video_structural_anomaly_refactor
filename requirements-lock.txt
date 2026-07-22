@@ -1,0 +1,9 @@
+# Verified CPU-independent base/test environment for Python 3.11-3.13.
+# PyTorch and CUDA are intentionally installed separately for the target server.
+matplotlib==3.11.0
+numpy==2.5.0
+opencv-python-headless==5.0.0.93
+pillow==12.2.0
+pyarrow==21.0.0
+pytest==9.0.3
+PyYAML==6.0.3

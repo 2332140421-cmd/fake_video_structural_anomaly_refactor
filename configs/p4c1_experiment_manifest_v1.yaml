@@ -1,0 +1,45 @@
+manifest:
+  version: p4c1_experiment_manifest_v1
+  sample_unit: clip
+  deterministic_id_version: clip_identity_sha256_v1
+  freeze_split_from_p4c0: true
+
+inputs:
+  p4c0_config: configs/p4c0_experiment_protocol_v1.yaml
+  p4c0_protocol_root: data/experiment_protocol_v1
+  structural_dataset_root: outputs/structural_enhancement_dataset/p4b5_six_video_full_observation
+
+output_root: outputs/p4c1_experiment_manifest
+
+availability:
+  required_for_usable:
+    - video
+    - frames
+    - objects
+    - depth
+    - camera
+  optional_branch_modalities:
+    - pose
+    - tracks
+    - semantic3d
+    - camera_identity
+  require_complete_decoded_frames: true
+
+integrity:
+  verify_source_sha256: true
+  require_p4c0_protocol_valid: true
+  fail_on_leakage_error: true
+
+leakage_audit:
+  near_duplicate_threshold: 0.92
+  audit_source_video_id: true
+  audit_source_group_id: true
+  audit_original_source_identity: true
+  audit_source_sha256: true
+
+forbidden_operations:
+  train_model: false
+  fit_parameters: false
+  fit_distribution: false
+  select_threshold: false
+  compute_performance: false
