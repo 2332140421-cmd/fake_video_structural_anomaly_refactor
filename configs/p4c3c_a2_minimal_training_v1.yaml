@@ -1,0 +1,44 @@
+schema_version: semantic3d.p4c3c.a2.training_config.v1
+stage: P4-C3C-A2
+feature_contract: configs/p4c3c_a2_m6_feature_contract_v1.yaml
+
+data:
+  train_formal_manifest: null
+  train_manifest: null
+  validation_formal_manifest: null
+  validation_manifest: null
+
+model:
+  hidden_dim: 16
+  dropout: 0.0
+
+training:
+  seed: 20260725
+  device: auto
+  epochs: 2
+  batch_size: 4
+  num_workers: 0
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  gradient_clip_norm: 1.0
+  amp: false
+  deterministic: true
+  scheduler: none
+  scheduler_step_size: 1
+  scheduler_gamma: 0.5
+  # null disables weighting; train_split derives negatives/positives from train only.
+  pos_weight: null
+  log_interval: 1
+  max_train_batches: null
+  max_validation_batches: null
+
+output_dir: outputs/p4c3c_a2_synthetic/default
+resume_checkpoint: null
+
+constraints:
+  precomputed_evidence_only: true
+  decode_video_in_dataset: false
+  provider_inference_allowed: false
+  test_split_allowed: false
+  synthetic_metrics_are_performance_claims: false
+  formal_training_executed: false

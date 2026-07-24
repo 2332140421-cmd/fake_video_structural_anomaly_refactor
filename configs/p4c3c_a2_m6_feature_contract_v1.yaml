@@ -1,0 +1,95 @@
+schema_version: semantic3d.p4c3c.a2.feature_contract.v1
+feature_contract_version: p4c3c_a2_m6_branch_features_v1
+source_schema_version: semantic3d.p4c3b.evidence_fusion.v1
+scope: sample
+description: >-
+  Missing-aware, branch-level inputs derived from precomputed M6 evidence.
+  This contract is an engineering interface, not a calibrated or final method.
+
+branch_order:
+  - static_metric_geometry
+  - static_relative_geometry
+  - boundary_structure
+  - internal_structure
+  - temporal_scale
+  - D1_local_motion
+  - D2_pose_reprojection
+  - D3_structural_relation
+  - occlusion_reappearance
+
+feature_fields:
+  - name: bounded_risk
+    source: BranchContribution.bounded_risk
+    dtype: float32
+    shape: [branch, 1]
+    normalization: one_minus_exp_negative
+    finite_range: [0.0, 1.0]
+    training_role: FEATURE
+
+reliability_fields:
+  - name: confidence
+    source: BranchContribution.confidence
+    dtype: float32
+    shape: [branch]
+    normalization: already_bounded
+    finite_range: [0.0, 1.0]
+    training_role: WEIGHT
+
+mask_fields:
+  - name: feature_mask
+    dtype: bool
+    shape: [branch, 1]
+    derivation: bounded_risk_is_present_and_finite_and_status_is_observed
+    training_role: MASK
+  - name: missing_mask
+    dtype: bool
+    shape: [branch, 1]
+    derivation: logical_not_feature_mask
+    training_role: MASK
+  - name: observability
+    dtype: bool
+    shape: [branch]
+    derivation: branch_is_applicable_and_not_provider_failure
+    training_role: MASK
+
+allowed_branch_status:
+  - observed
+  - missing
+  - not_applicable
+  - blocked_by_input
+  - provider_failed
+
+excluded_from_features:
+  - sample_id
+  - label
+  - split
+  - source_dataset
+  - generator
+  - source_lineage
+  - evidence_id
+  - object_id
+  - track_id
+  - frame_id
+  - video_id
+  - clip_id
+  - frame_index
+  - provider_status
+  - failure_reason
+  - configured_weight
+  - normalized_active_weight
+  - contribution_to_weighted_mean
+  - risk_score
+  - available_weight_ratio
+  - active_branch_count
+  - spatial_reference
+  - temporal_reference
+  - provenance
+
+invariants:
+  missing_value_encoding: null_plus_false_mask
+  unknown_label_encoding: null
+  provider_failure_is_anomaly_evidence: false
+  deterministic_fusion_retained_as_baseline: true
+  feature_statistics_fitted: false
+  formal_threshold_selected: false
+  test_split_allowed: false

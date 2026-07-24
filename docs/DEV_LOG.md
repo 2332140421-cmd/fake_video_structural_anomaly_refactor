@@ -4210,3 +4210,108 @@ git diff --check
 - 两个 manifest 脚本的 CLI 解析正常，`git diff --check` 通过。
 - 未运行依赖六视频、模型权重或历史产物的测试；未运行完整测试、推理、数据
   构建或训练。
+
+## 2026-07-25 - P4-C3C-A2 Minimal Trainable Loop
+
+### 目的
+
+在不下载正式数据或模型、不运行视频 provider 和不执行正式训练的前提下，
+建立基于预计算 M6 分支证据的最小二分类训练工程闭环。此阶段只验证
+Dataset、missing-aware 模型、loss、优化、validation、checkpoint 和 resume
+接口，不评价方法有效性。
+
+### 新增文件
+
+- `configs/p4c3c_a2_m6_feature_contract_v1.yaml`：冻结九个 M6 分支顺序，
+  仅允许分支 `bounded_risk` 作为特征、`confidence` 作为可靠性门控，
+  并显式排除 ID、来源、label、split、provider failure 和 deterministic
+  fusion 总分。
+- `configs/p4c3c_a2_minimal_training_v1.yaml`：记录数据入口、小模型、
+  optimizer、scheduler、AMP、确定性、checkpoint 和输出配置。
+- `src/semantic3d/minimal_training/`：实现 feature contract、A1 formal
+  manifest 与 evidence manifest join、DataLoader/collate、missing-aware
+  evidence head、masked BCE、validation 指标、严格 checkpoint/resume、
+  synthetic fixture 和训练循环。
+- `scripts/train_p4c3c_a2_minimal.py`：提供配置化训练入口及显式
+  `--synthetic-fixture` 工程模式。
+- `tests/test_p4c3c_a2_minimal_training.py`：覆盖 split/泄漏、缺失语义、
+  forward/loss/backward、CPU/CUDA/AMP、checkpoint/resume、checksum、
+  feature contract、固定 seed、validation 不更新状态和 metrics 追加。
+
+### 修改文件
+
+- `docs/DEV_LOG.md`：追加本记录。
+
+### 主要变化
+
+- Dataset 只读取 A1 formal metadata 和预计算 evidence manifest，不读取或
+  解码视频，不运行 YOLO、UniDepth 或 M1–M6 provider。
+- 输入张量固定为九分支 `features`、`feature_mask`、`missing_mask`、
+  `observability` 和 `reliability`；shape 不一致直接报错，不截断。
+- 所有 evidence 缺失的样本由 `valid_sample_mask=false` 标记，logit 保持
+  NaN 且不进入 loss；未知 label 使用独立 `label_mask`，不会变成负样本。
+- 无有效监督样本的 batch 不执行 backward 或 optimizer step，并记录
+  skipped batch。可选 `pos_weight` 只能从 train split 的已知标签派生。
+- validation 固定使用 0.5 工程阈值并输出 loss、accuracy、precision、
+  recall、F1 和类别齐全时的 ROC-AUC；不搜索阈值，不读取 test split。
+- checkpoint 保存模型、optimizer、scheduler、AMP scaler、epoch、
+  global step、best validation loss、配置、随机状态、feature contract、
+  Git 提交和 train/validation manifest checksum；不匹配时拒绝 resume。
+- checkpoint 以 CUDA `map_location` 加载时，会先把保存的 CPU/CUDA RNG
+  ByteTensor 规范化回 CPU 再恢复，避免 CUDA resume 的 RNG 类型错误。
+- synthetic fixture 的 train/validation sample ID 严格分开，包含双分支、
+  部分缺失、全 evidence 缺失、缺失 label 和 0/1 label。fixture 不包含
+  视频或私有资产。
+
+### 验证命令
+
+```bash
+.venv/bin/python -m pytest tests/test_p4c3c_a2_minimal_training.py -q -rs
+.venv/bin/python -m pytest \
+  tests/test_p4c3c_a1_formal_data.py \
+  tests/test_p4c3b_evidence_fusion.py -q -rs
+.venv/bin/python scripts/train_p4c3c_a2_minimal.py \
+  --synthetic-fixture --device cpu --epochs 1 \
+  --max-train-batches 1 --max-validation-batches 1 \
+  --output-dir outputs/p4c3c_a2_synthetic/cpu_single_step
+.venv/bin/python scripts/train_p4c3c_a2_minimal.py \
+  --synthetic-fixture --device cpu --epochs 2 \
+  --output-dir outputs/p4c3c_a2_synthetic/cpu_two_epoch
+.venv/bin/python scripts/train_p4c3c_a2_minimal.py \
+  --synthetic-fixture --device cuda --epochs 1 \
+  --max-train-batches 1 --max-validation-batches 1 \
+  --output-dir outputs/p4c3c_a2_synthetic/cuda_single_step
+.venv/bin/python scripts/train_p4c3c_a2_minimal.py \
+  --synthetic-fixture --device cuda --amp --epochs 1 \
+  --max-train-batches 1 --max-validation-batches 1 \
+  --output-dir outputs/p4c3c_a2_synthetic/cuda_amp_single_step
+```
+
+### 验证结果
+
+- A2 专项：`32 passed`，CUDA 和 CUDA AMP 测试在可用设备上实际执行。
+- A1 formal schema 与 M6 evidence fusion 回归：`20 passed`。
+- CPU 单步、CPU 两 epoch、CUDA 单步和 CUDA AMP 单步均完成。
+- checkpoint resume 从 epoch 1 继续 epoch 2，global step 从 2 增至 4，
+  metrics JSONL 从 2 行追加到 4 行。
+- CUDA AMP resume 从 epoch 1 继续 epoch 2，scaler state 非空，
+  optimizer step 与 global step 均从 1 连续到 2。
+- 所有工程输出位于 `outputs/p4c3c_a2_synthetic/` 且被 Git 忽略。
+- 未下载数据或模型，未运行视频推理、M1–M6 真实流水线或正式训练。
+
+### 当前限制
+
+- 当前服务器没有真实 formal manifest 或真实 M6 evidence manifest，
+  因此 real-data dry-run 尚不可执行。
+- M6 原始分支残差尚未跨分支统计校准；A2 只使用 M6 固定单调变换后的
+  `bounded_risk`，不拟合正式统计量。
+- synthetic 指标只证明工程闭环可运行，不代表真假检测性能。
+- 时间、空间、对象和分支辅助监督仅保留 metadata 接口，未实现多任务 loss。
+- 正式阈值、正式训练、test evaluation 和方法效果结论均未建立。
+
+### 下一步计划
+
+- 在官方 schema 核验且真实数据按 A1 contract 接入后，先生成预计算 M6
+  evidence manifest 并执行不更新参数的 real-data dry-run。
+- 对 train split 做 missingness shortcut 和分支覆盖平衡审计，再决定是否
+  允许任何统计拟合或正式训练。
