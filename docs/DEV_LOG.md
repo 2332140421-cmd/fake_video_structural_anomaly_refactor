@@ -4315,3 +4315,109 @@ Dataset、missing-aware 模型、loss、优化、validation、checkpoint 和 res
   evidence manifest 并执行不更新参数的 real-data dry-run。
 - 对 train split 做 missingness shortcut 和分支覆盖平衡审计，再决定是否
   允许任何统计拟合或正式训练。
+
+## 2026-07-25 - P4-C3C-A3-A Real-Data Dry-Run Readiness
+
+### 目的
+
+在不下载正式视频、不运行 M1–M6 批处理和不执行训练的前提下，核验官方
+GenVideo-100K 源、恢复当前有效配置所需的公共模型资产，并建立真实 M6
+审计表到 A2 evidence manifest 的确定性转换桥。
+
+### 官方数据源结论
+
+- 官方 DeMamba 仓库确实链接到 ModelScope 的
+  `cccnju/GenVideo-100K`，数据卡许可为 `CC-BY-NC-SA-4.0`。
+- 固定读取的数据仓库 revision 为
+  `b31a22ff523263c6915a480966cbab1c87eca345`。
+- 官方树只有 README、Git 属性文件及 15 个压缩包/分片的 Git LFS
+  pointer；没有 CSV、JSON、JSONL、Parquet、record manifest 或 split
+  定义。
+- label、official split、fake generator、real source、video path 和
+  record lineage 字段均未核验，因此
+  `official_schema_verified=false`，既有 GenVideo adapter 继续保持
+  skeleton，未根据压缩包名猜测字段。
+- 小样本计划因缺少 record metadata、单视频下载入口和 official split
+  而保持未就绪；本阶段没有下载任何视频。
+
+### 公共模型资产与环境
+
+- `yolov8n-seg.pt` 与冻结 registry 的大小和 SHA-256 完全一致。
+- `yolov8n.pt`、`yolov8n-pose.pt` 从 registry 声明的官方 URL 获取后，
+  实际大小和 SHA-256 与冻结值不同，状态保持 `MISMATCH`，未进入正式
+  checkpoint 位置。
+- UniDepth 固定源码 revision
+  `8d8cfe4c7ee15297099983607febf0d4f32eb3d6` 保持干净；
+  ViT-S14 weight/config 与 registry SHA-256 完全一致。
+- 有效 P4-B.5 配置需要 Depth Anything V2 Small。其规模按官方说明为
+  24.8M parameters，许可为 Apache-2.0；由于项目 registry 未声明该资产
+  revision、大小或 SHA，下载后状态为 `DOWNLOADED_UNVERIFIED`，没有冒充
+  冻结校验成功。
+- Python、torch、torchvision、transformers 与 triton 的既有版本未被
+  替换。UniDepth 使用固定源码 editable `--no-deps`，随后仅按真实 import
+  缺失补入最小依赖。
+- 上游 UniDepth 包元数据把训练、可视化、评测和可选加速依赖统一声明为
+  required；为避免改动已验证 torch/CUDA 栈，本阶段未安装 torchaudio、
+  xformers 或 evaluation-only 依赖，因此 `pip check` 仍明确报告这些
+  未满足项。
+- 未编译 UniDepth KNN/extract-patches 扩展；其旧 CUDA 架构列表未经
+  RTX 5090 适配，不在本阶段盲目编译。
+
+### 模型 load smoke
+
+- 三个 YOLO 文件都能识别为对应 detect/segment/pose 模型并切换到 CUDA；
+  两个 registry mismatch 文件的 load 成功不改变其资产状态。
+- UniDepth 从固定本地源码与固定本地文件离线加载，在 RTX 5090 上对
+  56×56 合成 RGB tensor 完成一次工程推理；depth 与 intrinsics 存在、
+  shape 合法且无 NaN/Inf。
+- UniDepth confidence 只记录为单输入内相对排序信息，不视为跨视频绝对
+  校准置信度。
+- Depth Anything V2 Small 从本地缓存离线加载并对 56×56 合成 tensor
+  完成 forward，relative depth 输出存在且有限；未解释为 metric depth
+  或性能结果。
+- smoke 输出位于 Git 忽略的 `outputs/p4c3c_a3_model_smoke/`。
+
+### M6 到 A2 evidence bridge
+
+- 新增 `configs/p4c3c_a3_evidence_bridge_v1.yaml`、
+  `src/semantic3d/minimal_training/evidence_bridge.py` 和
+  `scripts/build_p4c3c_a3_evidence_manifest.py`。
+- bridge 读取 M6 `branch_contribution_audit` 与混合型
+  `branch_availability_audit`，不读取 `risk_confidence_baseline`。
+- 九分支顺序严格来自 A2 feature contract；每个分支显式输出
+  `bounded_risk`、`feature_available`、`observability`、`confidence`
+  和 `missing_reason`，并保留 A2 所需的 `status`/`observable`。
+- legacy M6 `(video_id, clip_id)` 必须通过独立 mapping manifest 严格映射
+  到 A1 `sample_id`；重复、漏 join、未知分支和 split 不一致均报错。
+- label、source dataset、generator 和 lineage 只来自 formal manifest。
+  provider failure 保持 null feature 与显式 missing reason，deterministic
+  fusion 总分不进入输出。
+- 输出 JSONL 保存所有输入 checksum 与转换配置 checksum；转换不拟合
+  normalization、统计量或阈值。
+
+### 验证
+
+```bash
+.venv/bin/python -m pytest tests/test_p4c3c_a3_evidence_bridge.py -q -rs
+.venv/bin/python -m pytest \
+  tests/test_p4c3c_a2_minimal_training.py \
+  tests/test_p4c3c_a1_formal_data.py \
+  tests/test_p4c3b_evidence_fusion.py -q -rs
+.venv/bin/python scripts/build_p4c3c_a3_evidence_manifest.py --help
+```
+
+- A3 bridge 专项：`22 passed`。
+- A2、A1 与 M6 指定回归：`52 passed`。
+- bridge CLI help 正常。
+- 未下载 GenVideo-100K 或 BrokenVideos 视频，未运行真实视频流水线，
+  未运行训练，未选择阈值，未拟合正式统计量。
+
+### 当前状态
+
+- `PUBLIC_MODEL_ASSETS_READY=NO`：两个冻结 YOLO 权重 mismatch，且 Depth
+  Anything 仍无项目 registry 冻结元数据。
+- `GENVIDEO_OFFICIAL_SCHEMA_VERIFIED=NO`。
+- `M6_TO_A2_BRIDGE_READY=YES`。
+- `SMALL_SAMPLE_DOWNLOAD_READY=NO`。
+- `REAL_DATA_DRY_RUN_READY=NO`。
+- `FORMAL_TRAINING_READY=NO`。

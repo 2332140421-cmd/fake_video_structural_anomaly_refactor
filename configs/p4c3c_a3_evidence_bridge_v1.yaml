@@ -1,0 +1,38 @@
+schema_version: semantic3d.p4c3c.a3.evidence_bridge_config.v1
+stage: P4-C3C-A3-A
+feature_contract: configs/p4c3c_a2_m6_feature_contract_v1.yaml
+
+inputs:
+  formal_manifest: null
+  branch_contribution_manifest: null
+  branch_availability_manifest: null
+  sample_mapping_manifest: null
+
+output:
+  evidence_manifest: null
+  format: jsonl
+
+join:
+  key: sample_id
+  legacy_m6_key:
+    - video_id
+    - clip_id
+  require_explicit_mapping_for_legacy_key: true
+  require_exact_sample_set: true
+  require_split_match: true
+
+semantics:
+  bounded_risk_source: BranchContribution.bounded_risk
+  confidence_source: BranchContribution.confidence
+  label_source: formal_manifest_only
+  source_lineage_source: formal_manifest_only
+  fixed_branch_order_from_feature_contract: true
+  retain_all_missing_samples: true
+  reject_unknown_branches: true
+  provider_failure_encoded_as_feature: false
+
+read_deterministic_fusion_score: false
+fit_statistics: false
+select_threshold: false
+decode_video: false
+run_provider_inference: false
