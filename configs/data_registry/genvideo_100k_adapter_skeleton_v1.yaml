@@ -1,0 +1,24 @@
+schema_version: semantic3d_data_registry_v1
+dataset_id: genvideo_100k
+version: TODO_UNRESOLVED_SCHEMA
+official_source: TODO_UNRESOLVED_SCHEMA
+license: TODO_UNRESOLVED_SCHEMA
+citation: TODO_UNRESOLVED_SCHEMA
+official_split: TODO_UNRESOLVED_SCHEMA
+download_method: not_authorized_in_p4c3c_a1
+expected_checksums: {}
+server_root: ${DATA_ROOT}/genvideo-100k
+source_lineage_policy: >-
+  Preserve official source identity and derivation metadata after the official
+  schema is verified; do not infer lineage from filenames or directories.
+dataset_role: formal_candidate
+is_formal_dataset: false
+eligible_for_training: false
+eligible_for_model_selection: false
+eligible_for_threshold_selection: false
+eligible_for_final_evaluation: false
+adapter_module: semantic3d.dataset_adapters.genvideo100k
+adapter_status: skeleton
+data_downloaded: false
+official_schema_verified: false
+schema_status: TODO/UNRESOLVED_SCHEMA

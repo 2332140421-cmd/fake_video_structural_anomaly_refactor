@@ -5,13 +5,18 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 import cv2
 import numpy as np
 
+from .formal_schema import FormalVideoSample, OPTIONAL_METADATA_FIELDS
 from .ids import StableIdFactory, stable_id
 from .writer import sha256_file
+
+VIDEO_EXTENSIONS = frozenset(
+    {".avi", ".m4v", ".mkv", ".mov", ".mp4", ".mpeg", ".mpg", ".webm"}
+)
 
 
 @dataclass(frozen=True)
@@ -44,6 +49,240 @@ def inspect_video(path: str | Path) -> VideoProbe:
     if not success or frame is None:
         return VideoProbe(frame_count, fps, width, height, "failed", "first_frame_decode_failed")
     return VideoProbe(frame_count, fps, width, height, "ok", "")
+
+
+def scan_video_files(
+    video_root: str | Path,
+    *,
+    recursive: bool = True,
+    extensions: Iterable[str] = VIDEO_EXTENSIONS,
+) -> list[Path]:
+    """Return supported source videos in deterministic path order."""
+
+    root = Path(video_root).expanduser().resolve()
+    if not root.is_dir():
+        raise FileNotFoundError(f"Video directory does not exist: {root}")
+    allowed = {
+        value.lower() if value.startswith(".") else f".{value.lower()}"
+        for value in extensions
+    }
+    candidates = root.rglob("*") if recursive else root.iterdir()
+    return sorted(
+        (
+            path.resolve()
+            for path in candidates
+            if path.is_file() and path.suffix.lower() in allowed
+        ),
+        key=lambda path: path.as_posix(),
+    )
+
+
+def _resolved_source_path(source_path: str | Path, data_root: str | Path | None) -> Path:
+    source = Path(source_path).expanduser()
+    if source.is_absolute():
+        return source.resolve()
+    if data_root is None:
+        raise ValueError("Relative source paths require an explicit data_root")
+    return (Path(data_root).expanduser().resolve() / source).resolve()
+
+
+def normalize_manifest_video_path(
+    source_path: str | Path,
+    *,
+    data_root: str | Path | None,
+    path_mode: str,
+) -> tuple[Path, str]:
+    """Resolve a source and return an absolute or explicit data-root-relative path."""
+
+    source = _resolved_source_path(source_path, data_root)
+    if path_mode == "absolute":
+        return source, source.as_posix()
+    if path_mode != "data_root_relative":
+        raise ValueError("path_mode must be absolute or data_root_relative")
+    if data_root is None:
+        raise ValueError("data_root_relative mode requires data_root")
+    root = Path(data_root).expanduser().resolve()
+    try:
+        relative = source.relative_to(root).as_posix()
+    except ValueError as exc:
+        raise ValueError(f"Source path is outside data_root: {source}") from exc
+    return source, relative
+
+
+def _metadata_status(
+    values: Mapping[str, Any],
+    *,
+    status_overrides: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    statuses = {
+        name: ("missing" if values.get(name) is None else "provided")
+        for name in OPTIONAL_METADATA_FIELDS
+    }
+    for name in ("duration", "fps", "frame_count", "width", "height"):
+        if values.get(name) is not None:
+            statuses[name] = "derived"
+    statuses.update(dict(status_overrides or {}))
+    return statuses
+
+
+def build_formal_video_sample(
+    source_path: str | Path,
+    *,
+    data_root: str | Path | None,
+    source_dataset: str,
+    split: str | None = None,
+    label: int | None = None,
+    source_id: str | None = None,
+    source_lineage: Mapping[str, Any] | None = None,
+    generator: str | None = None,
+    source_domain: str | None = None,
+    is_real: bool | None = None,
+    temporal_annotation: Any | None = None,
+    spatial_annotation: Any | None = None,
+    official_split: bool = False,
+    expected_sha256: str | None = None,
+    path_mode: str = "absolute",
+    metadata_status: Mapping[str, str] | None = None,
+    probe: Callable[[str | Path], VideoProbe] = inspect_video,
+) -> FormalVideoSample:
+    """Build one canonical sample without assigning or changing dataset splits."""
+
+    raw_source_path = str(source_path)
+    source, manifest_path = normalize_manifest_video_path(
+        source_path,
+        data_root=data_root,
+        path_mode=path_mode,
+    )
+    if not source.is_file():
+        raise FileNotFoundError(f"Source video does not exist: {source}")
+    digest = sha256_file(source)
+    if expected_sha256 is not None and digest.lower() != expected_sha256.lower():
+        raise ValueError(f"Checksum mismatch for source video: {source}")
+
+    inspected = probe(source)
+    probe_ok = inspected.decode_status == "ok"
+    fps = (
+        float(inspected.fps)
+        if probe_ok and math.isfinite(float(inspected.fps)) and inspected.fps > 0
+        else None
+    )
+    frame_count = int(inspected.frame_count) if probe_ok and inspected.frame_count >= 0 else None
+    width = int(inspected.width) if probe_ok and inspected.width > 0 else None
+    height = int(inspected.height) if probe_ok and inspected.height > 0 else None
+    duration = (
+        float(frame_count) / fps
+        if frame_count is not None and fps is not None
+        else None
+    )
+    if label is not None and is_real is None:
+        is_real = label == 0
+    if label is None and is_real is not None:
+        label = 0 if is_real else 1
+
+    root = Path(data_root).expanduser().resolve() if data_root is not None else None
+    if root is not None:
+        try:
+            identity_path = source.relative_to(root).as_posix()
+        except ValueError:
+            identity_path = source.as_posix()
+    else:
+        identity_path = source.as_posix()
+    effective_source_id = source_id if source_id not in {"", None} else identity_path
+    sample_id = stable_id(
+        "formal_video_sample",
+        source_dataset,
+        identity_path,
+        digest,
+        prefix="sample",
+    )
+    values = {
+        "label": label,
+        "split": split,
+        "source_id": effective_source_id,
+        "source_lineage": source_lineage,
+        "generator": generator,
+        "source_domain": source_domain,
+        "is_real": is_real,
+        "duration": duration,
+        "fps": fps,
+        "frame_count": frame_count,
+        "width": width,
+        "height": height,
+        "temporal_annotation": temporal_annotation,
+        "spatial_annotation": spatial_annotation,
+    }
+    statuses = _metadata_status(values, status_overrides=metadata_status)
+    if source_id in {"", None} and (
+        metadata_status is None or "source_id" not in metadata_status
+    ):
+        statuses["source_id"] = "derived"
+    return FormalVideoSample(
+        sample_id=sample_id,
+        video_path=manifest_path,
+        label=label,
+        split=split,
+        source_dataset=source_dataset,
+        source_id=effective_source_id,
+        source_lineage=source_lineage,
+        generator=generator,
+        source_domain=source_domain,
+        is_real=is_real,
+        duration=duration,
+        fps=fps,
+        frame_count=frame_count,
+        width=width,
+        height=height,
+        file_size=source.stat().st_size,
+        sha256=digest,
+        temporal_annotation=temporal_annotation,
+        spatial_annotation=spatial_annotation,
+        metadata_status=statuses,
+        source_path=raw_source_path,
+        path_mode=path_mode,
+        official_split=official_split,
+    )
+
+
+def build_formal_manifest_from_directory(
+    video_root: str | Path,
+    *,
+    data_root: str | Path,
+    source_dataset: str,
+    split: str | None = None,
+    recursive: bool = True,
+    path_mode: str = "data_root_relative",
+    probe: Callable[[str | Path], VideoProbe] = inspect_video,
+) -> list[FormalVideoSample]:
+    """Recursively index one directory without inferring labels or lineage."""
+
+    return [
+        build_formal_video_sample(
+            path,
+            data_root=data_root,
+            source_dataset=source_dataset,
+            split=split,
+            path_mode=path_mode,
+            probe=probe,
+        )
+        for path in scan_video_files(video_root, recursive=recursive)
+    ]
+
+
+def disambiguate_source_names(
+    rows: Iterable[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Keep legacy stems when unique and suffix only colliding source names."""
+
+    output = [dict(row) for row in rows]
+    counts: dict[str, int] = {}
+    for row in output:
+        name = str(row["source_name"])
+        counts[name] = counts.get(name, 0) + 1
+    for row in output:
+        name = str(row["source_name"])
+        if counts[name] > 1:
+            row["source_name"] = f"{name}__{row['video_id']}"
+    return output
 
 
 def split_scene_segments(
@@ -190,16 +429,27 @@ def video_manifest_row(
 ) -> dict[str, Any]:
     """Create one content-addressed video manifest row without labels."""
 
-    relative = source_path.resolve().relative_to(source_root.resolve()).as_posix()
-    source_hash = sha256_file(source_path)
+    root = source_root.expanduser().resolve()
+    source = source_path.expanduser().resolve()
+    try:
+        relative = source.relative_to(root).as_posix()
+        path_kind = "source_root_relative"
+    except ValueError:
+        relative = source.as_posix()
+        path_kind = "absolute"
+    source_hash = sha256_file(source)
     factory = StableIdFactory(dataset_id)
-    probe = inspect_video(source_path)
+    probe = inspect_video(source)
     return {
         "video_id": factory.video(relative, source_hash),
-        "source_name": source_path.stem,
+        "source_name": source.stem,
+        "source_stem": source.stem,
         "source_relative_path": relative,
+        "source_path": source.as_posix(),
+        "source_original_path": str(source_path),
+        "source_path_kind": path_kind,
         "source_sha256": source_hash,
-        "file_size": source_path.stat().st_size,
+        "file_size": source.stat().st_size,
         "frame_count": probe.frame_count,
         "fps": probe.fps,
         "width": probe.width,

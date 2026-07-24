@@ -4143,3 +4143,70 @@ bash -n scripts/bootstrap_p4_server.sh
   not-applicable 的独立状态。
 - 在不读取真假标签的定位验证中补充正式 Mask、边界、点和轨迹的可视化，
   检查证据能否完整追溯到原观测。
+
+## 2026-07-25 - P4-C3C-A1 Formal Data Interface and Training Readiness
+
+### 目的
+
+在不下载正式数据、不运行模型推理和不训练的前提下，审计真实训练能力，
+并建立可接入服务器外部数据根目录的统一视频样本与数据集 adapter 基础。
+
+### 新增文件
+
+- `src/semantic3d/dataset_builder/formal_schema.py`：定义正式视频样本字段、
+  三种 split、显式缺失状态和一致性检查。
+- `src/semantic3d/dataset_adapters/`：定义通用 adapter 接口及
+  GenVideo-100K 未解析官方 schema 的显式骨架。
+- `configs/data_registry/genvideo_100k_adapter_skeleton_v1.yaml`：记录
+  `adapter_status: skeleton`、未下载且官方 schema 未核验。
+- `tests/test_p4c3c_a1_formal_data.py`：使用临时极小文件验证外部路径、递归
+  扫描、同名文件、稳定 ID、split、缺失标签、lineage、checksum、adapter
+  骨架及旧 YAML 路径兼容。
+
+### 修改文件
+
+- `src/semantic3d/dataset_builder/manifest.py`：增加通用视频扩展名、递归扫描、
+  绝对/数据根相对路径、正式样本构建和同名源消歧；旧 manifest 外部路径
+  不再强制 `relative_to(project_root)`。
+- `src/semantic3d/dataset_builder/pipeline.py` 与 `p4b5_pipeline.py`：支持
+  `sources.data_root` 和持久化绝对源路径，同时保留旧 YAML 相对路径以项目根
+  解析的语义。
+- `scripts/build_video_manifest.py`：保留旧 pilot 模式并增加显式 formal 模式。
+- `scripts/build_labels_manifest.py`：优先使用稳定 ID，拒绝同 stem 歧义，并用
+  null 加 `metadata_status` 表示缺失标签/标注。
+- `src/semantic3d/dataset_builder/__init__.py`：导出正式数据公共接口。
+
+### 训练能力审计结论
+
+- 未发现 torch `Dataset`/`DataLoader`、可训练 `nn.Module`、loss、backward、
+  optimizer、scheduler、AMP 或配置化训练入口。
+- 现有 cache/checkpoint/resume 是离线数据阶段与批次状态恢复，不包含模型、
+  optimizer 或训练 epoch 状态。
+- 现有验证与 metrics 是结构证据、数据完整性和 deterministic fusion 审计，
+  不是训练 validation loop 或真实性性能评估。
+- `SMALL_DRY_RUN_READY=NO`。
+- `FORMAL_TRAINING_READY=NO`。
+- 完整逐项证据报告为 `p4c3c_a1_training_readiness_audit.md`
+  （服务器外部审计产物，不纳入 Git）。
+
+### 验证
+
+```bash
+.venv/bin/python -m pytest tests/test_p4c3c_a1_formal_data.py -q
+.venv/bin/python -m pytest \
+  tests/test_p4c3c_a1_formal_data.py \
+  tests/test_structural_enhancement_dataset.py \
+  tests/test_dataset_builder_cache.py \
+  tests/test_p4b5_full_observation.py -q
+.venv/bin/python scripts/build_video_manifest.py --help
+.venv/bin/python scripts/build_labels_manifest.py --help
+git diff --check
+```
+
+### 验证结果
+
+- P4-C3C-A1 新增专项：`9 passed`。
+- 新增与受影响数据构建联合专项：`38 passed`。
+- 两个 manifest 脚本的 CLI 解析正常，`git diff --check` 通过。
+- 未运行依赖六视频、模型权重或历史产物的测试；未运行完整测试、推理、数据
+  构建或训练。

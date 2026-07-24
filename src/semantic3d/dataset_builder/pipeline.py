@@ -31,6 +31,7 @@ from .ids import StableIdFactory, stable_id
 from .manifest import (
     build_clip_manifests,
     decode_frame_signatures,
+    disambiguate_source_names,
     split_scene_segments,
     video_manifest_row,
 )
@@ -54,7 +55,7 @@ from .writer import (
 )
 
 
-VIDEO_COLUMNS = ("video_id", "source_name", "source_relative_path", "source_sha256", "file_size", "frame_count", "fps", "width", "height", "decode_status", "failure_reason")
+VIDEO_COLUMNS = ("video_id", "source_name", "source_stem", "source_relative_path", "source_path", "source_original_path", "source_path_kind", "source_sha256", "file_size", "frame_count", "fps", "width", "height", "decode_status", "failure_reason")
 CLIP_COLUMNS = ("clip_id", "video_id", "scene_id", "clip_ordinal", "start_frame_index", "end_frame_index", "core_start_frame_index", "core_end_frame_index", "reference_frame_index", "frame_count", "coordinate_system_id", "geometry_mode", "sequence_scale_status", "depth_alignment_domain", "pose_graph_id", "scale_alignment_id", "valid", "missing_reason")
 FRAME_COLUMNS = ("frame_record_id", "frame_id", "video_id", "clip_id", "frame_index", "scene_id", "is_context_frame", "is_owned_frame", "owner_clip_id", "decode_status", "failure_reason", "decoded_frame_path")
 STAGE_COLUMNS = ("run_id", "stage_name", "status", "cache_key", "cache_hit", "cache_reason", "started_at", "finished_at", "artifact_count", "failure_reason", "metadata")
@@ -148,6 +149,14 @@ class StructuralEnhancementDatasetBuilder:
         self.device = device or str(self.config.get("runtime", {}).get("device", "cpu"))
         self.num_workers = int(num_workers)
         self.selected_video_id = selected_video_id
+        configured_data_root = self.config.get("sources", {}).get("data_root")
+        if configured_data_root is None:
+            self.source_root = self.project_root
+        else:
+            source_root = Path(str(configured_data_root)).expanduser()
+            self.source_root = (
+                source_root if source_root.is_absolute() else self.project_root / source_root
+            ).resolve()
         output = Path(str(self.config["dataset"]["output_root"]))
         self.output_root = output if output.is_absolute() else self.project_root / output
         if selected_video_id:
@@ -175,8 +184,8 @@ class StructuralEnhancementDatasetBuilder:
         values = self.config.get("sources", {}).get("videos", [])
         paths = []
         for value in values:
-            path = Path(str(value))
-            path = path if path.is_absolute() else self.project_root / path
+            path = Path(str(value)).expanduser()
+            path = path if path.is_absolute() else self.source_root / path
             if not path.exists():
                 raise FileNotFoundError(f"Configured source video does not exist: {path}")
             paths.append(path.resolve())
@@ -335,17 +344,33 @@ class StructuralEnhancementDatasetBuilder:
     def _source_map(self) -> dict[str, dict[str, Any]]:
         return {str(row["source_name"]): row for row in self._read("manifests/videos.parquet")}
 
+    def _manifest_source_path(self, row: Mapping[str, Any]) -> Path:
+        """Resolve new absolute rows and legacy source-root-relative rows."""
+
+        explicit = str(row.get("source_path", "")).strip()
+        if explicit:
+            return Path(explicit).expanduser().resolve()
+        value = Path(str(row["source_relative_path"])).expanduser()
+        return (value if value.is_absolute() else self.source_root / value).resolve()
+
     def _owned_frames(self) -> list[dict[str, Any]]:
         return [row for row in self._read("manifests/frames.parquet") if row.get("is_owned_frame")]
 
     def _stage_01_video_index(self) -> list[Path]:
-        source_root = self.project_root
-        video_rows = [video_manifest_row(source_root=source_root, source_path=path, dataset_id=self.dataset_id) for path in self._selected_sources()]
+        source_root = self.source_root
+        video_rows = disambiguate_source_names(
+            video_manifest_row(
+                source_root=source_root,
+                source_path=path,
+                dataset_id=self.dataset_id,
+            )
+            for path in self._selected_sources()
+        )
         clips: list[dict[str, Any]] = []
         frames: list[dict[str, Any]] = []
         split = self.config.get("clip_split", {})
         for video in video_rows:
-            path = source_root / str(video["source_relative_path"])
+            path = self._manifest_source_path(video)
             signatures, decode_failures = decode_frame_signatures(path)
             if len(signatures) != int(video["frame_count"]):
                 video["frame_count"] = len(signatures)
@@ -401,7 +426,7 @@ class StructuralEnhancementDatasetBuilder:
         frames = self._read("manifests/frames.parquet")
         owners = {(row["video_id"], int(row["frame_index"])): row for row in frames if row.get("is_owned_frame")}
         for source_name, video in videos.items():
-            source_path = self.project_root / str(video["source_relative_path"])
+            source_path = self._manifest_source_path(video)
             capture = cv2.VideoCapture(str(source_path))
             if not capture.isOpened():
                 continue

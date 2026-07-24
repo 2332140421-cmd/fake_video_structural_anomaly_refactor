@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import os
 import sys
 from pathlib import Path
@@ -13,7 +14,17 @@ from typing import Iterable
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PROJECT_PYTHON = PROJECT_ROOT / ".venv" / "bin" / "python"
-VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv"}
+SRC = PROJECT_ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from semantic3d.dataset_builder.formal_schema import FORMAL_SAMPLE_FIELDS  # noqa: E402
+from semantic3d.dataset_builder.manifest import (  # noqa: E402
+    VIDEO_EXTENSIONS,
+    build_formal_manifest_from_directory,
+    scan_video_files,
+)
+
 MANIFEST_FIELDS = ["video_id", "video_path", "label", "label_name", "split"]
 
 
@@ -49,19 +60,44 @@ def parse_args() -> argparse.Namespace:
         default=str(PROJECT_ROOT / "data/manifests/pilot_smoke_2video.csv"),
     )
     parser.add_argument("--split", default="val")
+    parser.add_argument(
+        "--recursive",
+        action="store_true",
+        help="Recursively scan legacy real/fake directories.",
+    )
+    parser.add_argument(
+        "--formal-dir",
+        default="",
+        help="Build the unified formal manifest from this directory instead of pilot manifests.",
+    )
+    parser.add_argument(
+        "--data-root",
+        default="",
+        help="Explicit external data root used by --formal-dir.",
+    )
+    parser.add_argument("--source-dataset", default="")
+    parser.add_argument(
+        "--formal-split",
+        choices=("train", "validation", "test"),
+        default=None,
+    )
+    parser.add_argument(
+        "--formal-output-csv",
+        default="",
+        help="Required output path for --formal-dir.",
+    )
+    parser.add_argument(
+        "--formal-path-mode",
+        choices=("absolute", "data_root_relative"),
+        default="data_root_relative",
+    )
     return parser.parse_args()
 
 
-def find_videos(video_dir: Path) -> list[Path]:
+def find_videos(video_dir: Path, *, recursive: bool = False) -> list[Path]:
     """Return sorted supported video files from an existing directory."""
 
-    if not video_dir.is_dir():
-        raise FileNotFoundError(f"Video directory does not exist: {video_dir}")
-    videos = [
-        path.resolve()
-        for path in sorted(video_dir.iterdir())
-        if path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS
-    ]
+    videos = scan_video_files(video_dir, recursive=recursive)
     if not videos:
         raise FileNotFoundError(f"No supported videos found in: {video_dir}")
     return videos
@@ -159,13 +195,68 @@ def save_manifest(rows: list[dict[str, object]], output_csv: Path) -> None:
         writer.writerows(rows)
 
 
+def save_formal_manifest(
+    *,
+    video_dir: Path,
+    data_root: Path,
+    source_dataset: str,
+    split: str | None,
+    output_csv: Path,
+    path_mode: str,
+) -> int:
+    """Write the generic schema without inferring labels or source lineage."""
+
+    if not source_dataset.strip():
+        raise ValueError("--source-dataset is required with --formal-dir")
+    samples = build_formal_manifest_from_directory(
+        video_dir,
+        data_root=data_root,
+        source_dataset=source_dataset,
+        split=split,
+        recursive=True,
+        path_mode=path_mode,
+    )
+    if not samples:
+        raise FileNotFoundError(f"No supported videos found in: {video_dir}")
+    output_csv.parent.mkdir(parents=True, exist_ok=True)
+    with output_csv.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=FORMAL_SAMPLE_FIELDS)
+        writer.writeheader()
+        for sample in samples:
+            row = sample.to_dict()
+            for name in (
+                "source_lineage",
+                "temporal_annotation",
+                "spatial_annotation",
+                "metadata_status",
+            ):
+                row[name] = json.dumps(row[name], ensure_ascii=False, sort_keys=True)
+            writer.writerow(row)
+    return len(samples)
+
+
 def main() -> None:
     """Build the six-video and two-video pilot manifests."""
 
     args = parse_args()
+    if args.formal_dir:
+        if not args.data_root or not args.formal_output_csv:
+            raise ValueError(
+                "--data-root and --formal-output-csv are required with --formal-dir"
+            )
+        count = save_formal_manifest(
+            video_dir=Path(args.formal_dir),
+            data_root=Path(args.data_root),
+            source_dataset=args.source_dataset,
+            split=args.formal_split,
+            output_csv=Path(args.formal_output_csv),
+            path_mode=args.formal_path_mode,
+        )
+        print(f"Saved {count} formal sample(s) to {args.formal_output_csv}")
+        return
     rows = build_manifest_rows(
-        find_videos(Path(args.real_dir)),
-        find_videos(Path(args.fake_dir)),
+        find_videos(Path(args.real_dir), recursive=args.recursive),
+        find_videos(Path(args.fake_dir), recursive=args.recursive),
         split=args.split,
     )
     smoke_rows = select_smoke_rows(rows)

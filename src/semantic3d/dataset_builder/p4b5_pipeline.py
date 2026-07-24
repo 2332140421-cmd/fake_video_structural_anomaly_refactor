@@ -243,7 +243,7 @@ class P4B5StructuralEnhancementDatasetBuilder(StructuralEnhancementDatasetBuilde
             }
             if not pending:
                 continue
-            capture = cv2.VideoCapture(str(self.project_root / str(video["source_relative_path"])))
+            capture = cv2.VideoCapture(str(self._manifest_source_path(video)))
             try:
                 frame_index = 0
                 while capture.isOpened():
