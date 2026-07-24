@@ -1,0 +1,77 @@
+schema_version: semantic3d.p4c3b.evidence_fusion.v1
+stage: P4-C3B-M6
+
+inputs:
+  metric_scale: outputs/p4c3b_view_scale_history/metric_single_object_execution.csv
+  temporal_scale: outputs/p4c3b_view_scale_history/temporal_scale_execution.csv
+  d2_point: outputs/p4c3b_pose_d2_smoke/d2_point_residual_audit.csv
+  d2_boundary: outputs/p4c3b_pose_d2_smoke/d2_boundary_residual_audit.csv
+  d2_object: outputs/p4c3b_pose_d2_smoke/d2_object_residual_audit.csv
+  d3_relations: outputs/p4c3b_d3_occlusion/d3_relation_residuals.csv
+  occlusion_events: outputs/p4c3b_d3_occlusion/occlusion_event_manifest.csv
+
+output_dir: outputs/p4c3b_evidence_fusion
+
+clip_aliases:
+  fake_1_metric_smoke_clip_000: fake_1_verified_static_smoke
+  real_1_metric_smoke_clip_000: real_1_camera_motion_smoke
+
+clip_routes:
+  - video_id: fake_1
+    clip_id: fake_1_verified_static_smoke
+    observability: static
+    pose_available: true
+    event_observed: false
+  - video_id: real_1
+    clip_id: real_1_camera_motion_smoke
+    observability: camera_motion
+    pose_available: true
+    event_observed: false
+  - video_id: fake_2
+    clip_id: fake_2_motion_unreliable_control
+    observability: motion_unreliable
+    pose_available: false
+    event_observed: false
+
+branch_weights:
+  static_metric_geometry: 1.0
+  static_relative_geometry: 1.0
+  boundary_structure: 1.0
+  internal_structure: 1.0
+  temporal_scale: 1.0
+  D1_local_motion: 1.0
+  D2_pose_reprojection: 1.0
+  D3_structural_relation: 1.0
+  occlusion_reappearance: 1.0
+
+fusion:
+  top_k: 3
+  residual_transform: one_minus_exp_negative
+  cross_branch_method: half_weighted_mean_half_max
+
+temporal_localization:
+  smoothing_window: 3
+  diagnostic_threshold: null
+  max_gap: 1
+  minimum_duration: 2
+
+localization:
+  source_image_shape: [720, 1280]
+  source_image_shapes:
+    fake_1: [720, 1280]
+    fake_2: [720, 1280]
+    real_1: [1280, 720]
+  audit_map_shape: [180, 320]
+
+coverage_groups:
+  fake_1: source_group_a
+  real_1: source_group_b
+  fake_2: source_group_c
+
+constraints:
+  authenticity_labels_read: false
+  missingness_used_in_risk: false
+  formal_threshold_selected: false
+  formal_training_executed: false
+  distribution_fitting_executed: false
+  method_effectiveness_established: false

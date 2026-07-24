@@ -1,8 +1,8 @@
 """D3 higher-order 3D relation contracts and formula-level diagnostics.
 
-This module does not claim an integrated D3 detector.  It defines the
-pose-compensated relation measurements and comparison formulas needed by a
-future full-SE3 executor.
+The original P4-C3A-M interface remains backward compatible. P4-C3B-M5 adds a
+concrete graph executor in :mod:`semantic3d.d3` while continuing to use these
+relation types and formulas.
 """
 
 from __future__ import annotations
@@ -26,6 +26,10 @@ class D3RelationType(str, Enum):
     STRUCTURE_EDGE_LENGTH = "structure_edge_length"
     LOCAL_RIGIDITY = "local_rigidity"
     BEARING_RELATION = "bearing_relation"
+    RELATIVE_ORIENTATION = "relative_orientation"
+    OBJECT_BOUNDARY_RELATION = "object_boundary_relation"
+    CONTAINMENT_OR_OVERLAP = "containment_or_overlap"
+    SUPPORT_OR_CONTACT = "support_or_contact"
 
 
 @dataclass(frozen=True)
@@ -98,6 +102,18 @@ def d3_formula_definitions() -> dict[str, str]:
         D3RelationType.BEARING_RELATION.value: (
             "acos(clip(dot(unit_bearing_t, unit_bearing_prev), -1, 1)) / pi"
         ),
+        D3RelationType.RELATIVE_ORIENTATION.value: (
+            "abs(relative_orientation_t - relative_orientation_prev) / pi"
+        ),
+        D3RelationType.OBJECT_BOUNDARY_RELATION.value: (
+            "mean(abs(log((radial_extent_t + eps) / (radial_extent_prev + eps))))"
+        ),
+        D3RelationType.CONTAINMENT_OR_OVERLAP.value: (
+            "mean(abs(overlap_stat_t - overlap_stat_prev))"
+        ),
+        D3RelationType.SUPPORT_OR_CONTACT.value: (
+            "mean(abs(contact_stat_t - contact_stat_prev))"
+        ),
     }
 
 
@@ -144,6 +160,7 @@ def compare_d3_relations(
     if relation_type in {
         D3RelationType.OBJECT_RELATIVE_DISTANCE,
         D3RelationType.STRUCTURE_EDGE_LENGTH,
+        D3RelationType.OBJECT_BOUNDARY_RELATION,
     }:
         if np.any(previous_values <= 0.0) or np.any(current_values <= 0.0):
             return ResidualEvidence.missing(
@@ -154,9 +171,9 @@ def compare_d3_relations(
         )
     elif relation_type == D3RelationType.DEPTH_ORDER:
         value = float(np.mean(np.sign(previous_values) != np.sign(current_values)))
-    elif relation_type == D3RelationType.LOCAL_RIGIDITY:
-        value = float(np.mean(np.abs(current_values - previous_values)))
-    else:
+    elif relation_type in {
+        D3RelationType.BEARING_RELATION,
+    }:
         previous_norm = float(np.linalg.norm(previous_values))
         current_norm = float(np.linalg.norm(current_values))
         if previous_norm <= eps or current_norm <= eps:
@@ -171,6 +188,8 @@ def compare_d3_relations(
             )
         )
         value = math.acos(cosine) / math.pi
+    else:
+        value = float(np.mean(np.abs(current_values - previous_values)))
     return ResidualEvidence.observed(
         "d3_relation_change",
         value,

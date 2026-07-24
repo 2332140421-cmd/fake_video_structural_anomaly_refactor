@@ -1,0 +1,62 @@
+schema_version: semantic3d.p4c3b.pose_d2_smoke.v1
+stage: P4-C3B-M4
+
+inputs:
+  metric_provider_root: outputs/p4c3b_metric_provider_smoke
+  metric_scene3d_root: outputs/p4c3b_metric_scene3d
+  structural_dataset_root: outputs/structural_enhancement_dataset/p4b5_six_video_full_observation
+
+output_dir: outputs/p4c3b_pose_d2_smoke
+
+smoke_clips:
+  - clip_id: fake_1_verified_static_smoke
+    video_id: fake_1
+    frame_indices: [0, 1, 2]
+    requested_motion_class: verified_static
+    input_mode: persisted_metric_frames
+  - clip_id: real_1_camera_motion_smoke
+    video_id: real_1
+    frame_indices: [30, 31, 32]
+    requested_motion_class: camera_motion
+    input_mode: persisted_metric_frames
+  - clip_id: fake_2_motion_unreliable_control
+    video_id: fake_2
+    frame_indices: [0, 1]
+    requested_motion_class: motion_unreliable
+    input_mode: deliberately_missing_metric_geometry
+
+pose_thresholds:
+  minimum_correspondences: 20
+  minimum_inliers: 12
+  minimum_inlier_ratio: 0.45
+  minimum_spatial_coverage: 0.08
+  maximum_pnp_reprojection_error_px: 3.0
+  minimum_valid_confidence: 0.30
+  static_max_median_flow_px: 0.60
+  static_max_background_flow_px: 0.60
+  static_max_parallax_px: 0.40
+  static_max_homography_rotation_degrees: 0.25
+  static_max_pnp_translation_m: 0.01
+  static_max_image_difference: 0.025
+  static_min_homography_inlier_ratio: 0.85
+  static_required_evidence_count: 4
+  maximum_corners: 1200
+  minimum_corner_distance_px: 5.0
+  forward_backward_threshold_px: 1.5
+
+d2:
+  maximum_background_points_per_pair: 120
+  maximum_boundary_points_per_object_pair: 48
+  depth_occlusion_margin_m: 0.10
+  depth_conflict_relative_threshold: 0.10
+
+constraints:
+  coordinate_frame: clip_local_aligned
+  depth_unit: meter
+  depth_definition: z_depth
+  metric_depth_status: model_predicted_not_sensor_truth
+  world_frame_reconstruction: false
+  authenticity_labels_used: false
+  anomaly_threshold_applied: false
+  model_inference_executed: false
+  training_executed: false

@@ -193,11 +193,15 @@ class SizeObservability:
     width_observable: bool
     depth_extent_observable: bool
     reasons: Mapping[str, tuple[str, ...]]
+    length_observable: bool = False
 
     @property
     def none_observable(self) -> bool:
         return not (
-            self.height_observable or self.width_observable or self.depth_extent_observable
+            self.height_observable
+            or self.width_observable
+            or self.length_observable
+            or self.depth_extent_observable
         )
 
 
@@ -291,12 +295,17 @@ def ray_distance_to_z_depth(
 def evaluate_size_observability(
     obj: MetricObjectRegion, *, for_pointcloud: bool = False
 ) -> SizeObservability:
-    """Evaluate height, width, and depth extent independently."""
+    """Evaluate height, width, length, and visible depth range independently."""
 
-    reasons: dict[str, list[str]] = {"height": [], "width": [], "depth_extent": []}
-    height = width = depth = True
+    reasons: dict[str, list[str]] = {
+        "height": [],
+        "width": [],
+        "length": [],
+        "depth_extent": [],
+    }
+    height = width = length = depth = True
     if obj.severe_truncation or obj.out_of_frame_ratio > 0.1:
-        height = width = depth = False
+        height = width = length = depth = False
         for values in reasons.values():
             values.append("severe_truncation_or_out_of_frame")
     if {"top", "bottom"} & obj.border_contacts:
@@ -305,6 +314,8 @@ def evaluate_size_observability(
     if {"left", "right"} & obj.border_contacts:
         width = False
         reasons["width"].append("horizontal_border_contact")
+        length = False
+        reasons["length"].append("horizontal_border_contact")
     pose = obj.pose_status.lower()
     if obj.class_name.lower() == "person" and pose in {"sitting", "bending", "kneeling"}:
         height = False
@@ -314,8 +325,8 @@ def evaluate_size_observability(
             width = False
             reasons["width"].append("width_pose_not_observable")
         if bool(obj.metadata.get("length_pose_sensitive", True)):
-            depth = False
-            reasons["depth_extent"].append("depth_extent_pose_not_observable")
+            length = False
+            reasons["length"].append("length_pose_not_observable")
     if obj.occlusion_ratio > 0.5:
         depth = False
         reasons["depth_extent"].append("heavy_occlusion")
@@ -325,13 +336,20 @@ def evaluate_size_observability(
         if bool(obj.metadata.get("width_occluded", False)):
             width = False
             reasons["width"].append("width_occluded")
-    for name, current in (("height", height), ("width", width), ("depth_extent", depth)):
+    for name, current in (
+        ("height", height),
+        ("width", width),
+        ("length", length),
+        ("depth_extent", depth),
+    ):
         override = obj.metadata.get(f"{name}_observable")
         if override is not None:
             if name == "height":
                 height = bool(override)
             elif name == "width":
                 width = bool(override)
+            elif name == "length":
+                length = bool(override)
             else:
                 depth = bool(override)
             if not bool(override):
@@ -344,6 +362,7 @@ def evaluate_size_observability(
         width_observable=width,
         depth_extent_observable=depth,
         reasons={key: tuple(value) for key, value in reasons.items()},
+        length_observable=length,
     )
 
 
@@ -583,7 +602,7 @@ class MetricSingleObjectScaleBranch:
         observable = {
             "height_m": observability.height_observable,
             "width_m": observability.width_observable,
-            "length_m": observability.depth_extent_observable,
+            "length_m": observability.length_observable,
             "extent_m": not observability.none_observable,
         }
         residuals: dict[str, float] = {}

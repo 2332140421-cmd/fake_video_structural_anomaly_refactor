@@ -1,0 +1,37 @@
+schema_version: semantic3d.p4c3b.d3_occlusion.v1
+stage: P4-C3B-M5
+
+inputs:
+  metric_scene3d_root: outputs/p4c3b_metric_scene3d
+  pose_d2_root: outputs/p4c3b_pose_d2_smoke
+
+output_dir: outputs/p4c3b_d3_occlusion
+
+persisted_video_clips:
+  - clip_id: fake_1_verified_static_smoke
+    video_id: fake_1
+    frame_indices: [0, 1, 2]
+  - clip_id: real_1_camera_motion_smoke
+    video_id: real_1
+    frame_indices: [30, 31, 32]
+
+graph:
+  maximum_boundary_nodes_per_object: 16
+  maximum_internal_nodes_per_object: 12
+
+events:
+  partial_visible_ratio: 0.80
+  full_overlap_ratio: 0.75
+  out_of_frame_ratio: 0.20
+  minimum_track_quality: 0.50
+  true_disappearance_confirmation_frames: 2
+
+constraints:
+  coordinate_frame: clip_local_aligned
+  world_frame_reconstruction: false
+  visible_masks_are_amodal: false
+  authenticity_labels_used: false
+  anomaly_threshold_applied: false
+  training_executed: false
+  distribution_fitting_executed: false
+  method_effectiveness_evaluated: false

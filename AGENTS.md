@@ -2,16 +2,18 @@
 
 Read this file before changing the repository. Then read:
 
-1. `docs/SERVER_HANDOFF_P4C3B_M2.md`
+1. `docs/SERVER_HANDOFF_P4C3B_M2.md` for the transferred M1/M2 inputs
 2. `configs/handoff/p4c3b_m2_server_handoff_v1.yaml`
-3. the latest entries in `docs/DEV_LOG.md`
+3. `configs/p4c3b_view_scale_history_v1.yaml`
+4. `configs/p4c3b_pose_d2_smoke_v1.yaml`
+5. the latest entries in `docs/DEV_LOG.md`
 
 Actual source, configurations, artifacts, and tests take precedence over prose.
 Do not claim a feature is implemented or executed from a plan or log alone.
 
 ## Current Verified Stage
 
-P4-C3B-M2 is complete locally:
+P4-C3B-M4 is complete locally on top of the transferred M1/M2 artifacts:
 
 - UniDepthV2 provides model-predicted metric depth and model-predicted
   intrinsics. These are not sensor ground truth or calibrated camera metadata.
@@ -21,6 +23,29 @@ P4-C3B-M2 is complete locally:
 - `world_frame_reconstruction_complete=false`.
 - Generic internal points are `geometric_track_point` candidates, not semantic
   keypoints and not yet verified across frames.
+- M3 models camera FOV/intrinsics provenance, explicit object viewpoint state,
+  per-dimension observability, metric single-object execution, and same-track
+  size histories.
+- No reliable category pose provider was available in the persisted smoke:
+  all 11 object viewpoints remained `unknown` and no canonical physical
+  dimension produced a valid unary metric residual.
+- Camera-axis visible extents are separately named diagnostic measurements.
+  They produced 12 valid same-track temporal residuals for one couch track;
+  they are not canonical width, height, or length.
+- M4 estimates adjacent-frame camera pose using formal-mask foreground
+  exclusion, background LK tracks, per-frame model-predicted intrinsics, and
+  source model-predicted metric depth PnP.
+- The accepted convention is
+  `X_target_camera = T_target_from_source @ X_source_camera`.
+- `fake_1` supplies two multi-evidence `verified_static` frame pairs;
+  `real_1` supplies two `estimated_valid` short-baseline camera-motion pairs.
+  The persisted `fake_2` control is `blocked_by_intrinsics`, not assigned an
+  identity pose or a high residual.
+- D2 real smoke generated valid point, visible-boundary, depth, and object
+  reprojection diagnostics. Out-of-frame, occluded, depth-conflicting, and
+  missing-correspondence points remain invalid with NaN.
+- Adjacent metric camera frames can be composed into a short
+  `clip_local_aligned` reference gauge. This is not a long-term world map.
 - No D3 temporal residual or method-effectiveness conclusion exists.
 
 The six local videos are geometry-validation smoke data only. They are not

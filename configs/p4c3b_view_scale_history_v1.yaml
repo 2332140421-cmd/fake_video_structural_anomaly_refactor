@@ -1,0 +1,46 @@
+schema_version: semantic3d_p4c3b_view_scale_history_v1
+stage: P4-C3B-M3
+inputs:
+  metric_provider_smoke_root: outputs/p4c3b_metric_provider_smoke
+  metric_scene3d_root: outputs/p4c3b_metric_scene3d
+  formal_observation_dataset_root: outputs/structural_enhancement_dataset/p4b5_six_video_full_observation
+  strict_v2_prior_path: configs/scale_priors_strict_v2.yaml
+camera_view:
+  distortion_status: model_input_undistortion_not_reported
+  intrinsics_confidence: null
+  default_motion_class: motion_unreliable
+object_view:
+  minimum_view_confidence: 0.60
+  minimum_visible_ratio: 0.20
+  maximum_occlusion_ratio: 0.50
+  border_margin_ratio: 0.01
+metric_single_object:
+  estimator: mask_pointcloud_extent
+  min_detection_confidence: 0.30
+  min_depth_confidence: 0.30
+  min_valid_depth_ratio: 0.50
+  max_out_of_frame_ratio: 0.10
+  max_occlusion_ratio: 0.50
+  min_point_count: 20
+  quantile_low: 0.05
+  quantile_high: 0.95
+  allow_approximated_intrinsics: false
+temporal_scale:
+  reference_methods:
+    - previous_valid
+    - rolling_median
+    - robust_track_median
+  min_valid_history: 2
+  reference_window: 5
+  max_frame_gap: 1
+  minimum_quality: 0.30
+  max_intrinsics_relative_change: 0.03
+  max_visible_extent_change_for_pose_compatibility: 0.35
+scope_constraints:
+  coordinate_frame: camera_frame_metric
+  metric_depth_claim: model_predicted_not_sensor_ground_truth
+  world_frame_reconstruction: false
+  training: false
+  distribution_fitting: false
+  threshold_selection: false
+  authenticity_performance_evaluation: false

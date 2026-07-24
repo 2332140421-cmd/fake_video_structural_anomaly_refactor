@@ -3706,3 +3706,440 @@ bash -n scripts/bootstrap_p4_server.sh
   再分渠道放置模型、视频和大型产物。
 - 只有新的用户阶段提示词到达后，才讨论 view observability 或 temporal
   size materialization，不由代理自动开始。
+
+## 2026-07-24 - P4-C3B-M3 Camera View And Scale History
+
+### 目的
+
+在 P4-C3B-M1 模型估计米制深度和 M2 单帧相机坐标系可见表面 2.5D
+结构之上，显式建模相机视场、对象视角、姿态风险和逐维可观测性，并物化
+同一对象轨迹的米制尺度历史。该阶段只验证现有数据链路与残差契约，不训练、
+不选择阈值、不比较真假性能。
+
+### 新增文件
+
+- `src/semantic3d/method_completion/view_observability.py`：定义
+  `CameraViewObservation`、`ObjectViewObservation`、视角枚举和逐维门控。
+- `src/semantic3d/method_completion/view_scale_smoke.py`：复用 M1、M2 和
+  P4-B.5 已保存产物，离线执行视角、单对象米制尺度和同轨迹尺度历史审计。
+- `configs/p4c3b_view_scale_history_v1.yaml`：冻结 M3 输入、质量门控、
+  时序参考与禁止事项。
+- `scripts/run_p4c3b_view_scale_history_smoke.py`：M3 离线 smoke 命令入口。
+- `tests/test_p4c3b_view_scale_history.py`：覆盖视角、独立维度、遮挡/触边、
+  稳定与跳变尺度、三种历史参考、ID switch、内参变化、静态路由及 NaN。
+
+### 修改文件
+
+- `src/semantic3d/method_completion/metric_scale.py`：向后兼容地增加独立
+  `length_observable`，避免把相机 Z 可见范围直接当作 canonical length。
+- `src/semantic3d/method_completion/temporal_scale.py`：增加
+  `robust_track_median`、无效 NaN 历史、逐维可观测性、轨迹间断、scene cut、
+  质量门控和受限内参漂移兼容。
+- `src/semantic3d/method_completion/__init__.py`：导出 M3 公共契约。
+- `AGENTS.md`：更新当前真实完成阶段、证据覆盖和禁止误解事项。
+- `docs/DEV_LOG.md`：追加本记录。
+
+### 删除文件
+
+- 无。
+
+### 主要变化
+
+- 相机 FOV 由模型预测 K 显式计算，内参状态记录为
+  `model_predicted_unscored`，不称为 calibrated。
+- 没有可靠姿态输入时，视角保持 `unknown`；高度、宽度、长度和可见深度
+  范围逐维门控，失败维度保持 NaN。
+- canonical 物理维度和 `camera_x/y_visible_extent`、
+  `camera_z_visible_range` 分开。后者只支持同轨迹稳定性，不冒充对象真实
+  height/width/length。
+- 单对象米制主分支实际尝试 11 个对象，但有效物理残差为 0：
+  couch 缺少冻结物理先验，cup/bottle 未通过既有深度质量门控，另有一个
+  couch 检测置信度过低。没有降低门控制造覆盖。
+- 物化 77 条 track size history；三种参考方法合计尝试 231 次，主 couch
+  track 的相机轴可见 extent 产生 12 条有效时序残差。
+- 无效单对象和时序证据均为 NaN，未出现 missing-as-zero；provider failure
+  与 motion_unreliable 均不转为异常证据。
+- 当前 6 个持久化 smoke 帧均为 `motion_unreliable`，没有真实 static 或
+  low-motion 正例；静态路由由契约测试验证，但不虚报真实静态 smoke。
+
+### 验证命令
+
+```bash
+.venv/bin/python scripts/run_p4c3b_view_scale_history_smoke.py
+.venv/bin/python -m pytest tests/test_p4c3b_view_scale_history.py -v
+.venv/bin/python -m pytest \
+  tests/test_p4c3a_metric_single_object_primary.py \
+  tests/test_p4c3a_temporal_same_object_scale.py \
+  tests/test_p4c3a_method_completion.py \
+  tests/test_p4c3b_metric_scene3d.py \
+  tests/test_p4c3b_metric_provider.py -q -rs
+.venv/bin/python -m pytest -q -rs
+```
+
+### 验证结果
+
+- M3 专项：`10 passed`。
+- 旧 MD2、时序、方法补全、M1/M2 回归：`56 passed, 1 warning`。
+- 全量回归：`603 passed, 5 skipped, 1 warning`。
+- 5 个 skip 均为既有可选姿态权重/real_3 observation、P3 shared cache、
+  两项旧 shared-geometry smoke 产物和未提交 strict-v2 六视频 fixture。
+- warning 为本机 NVIDIA driver 与 PyTorch CUDA build 不匹配；M3 未运行
+  新模型推理，不依赖 CUDA。
+- strict-v1、strict-v2 和 P4-C0/C1/C2 配置 SHA-256 均保持不变。
+
+### 当前限制
+
+- 当前视角状态没有通用类别姿态 provider，11 个真实对象视角均为 unknown，
+  canonical 可观测维度为 0。
+- 模型预测米制深度与模型预测内参不是传感器真值；时序内参只允许同 provider
+  且相对变化不超过显式阈值的比较。
+- 正式 mask 仅为 visible mask，不是 amodal mask；遮挡下不能声称完整尺度。
+- 当前有效时序结果来自相机轴可见 extent，不是严格语义物理尺度残差。
+- 6 帧 smoke 不能建立方法有效性或真假性能结论。
+
+### 下一步计划
+
+- 接入可审计类别姿态/人体关键点来源，先验证 viewpoint 与完整维度的真实
+  覆盖，再允许 canonical metric residual 进入主证据。
+- 增加至少一个已有米制深度的 static/low-motion 短片段，验证静态真实路由。
+- 在不降低质量门控的前提下扩大米制帧覆盖，审计 provider 内参和尺度漂移。
+
+## 2026-07-24 - P4-C3B-M4 Continuous Pose And Real D2 Smoke
+
+### 目的
+
+在既有 D2 合成数学闭环和 M1/M2 持久化米制短片段之上，建立具有明确失败
+状态的真实短基线相机位姿 Provider、多证据静态确认、前景排除、短 clip
+局部坐标对齐，以及带可见性判定的真实 D2 几何 smoke。本阶段只审核几何
+链路，不训练、不选阈值、不使用真假标签评价性能。
+
+### 新增文件
+
+- `src/semantic3d/pose_d2/contracts.py`：统一位姿状态、静态验证和
+  validity-aware D2 证据契约。
+- `src/semantic3d/pose_d2/provider.py`：实现前景排除 LK、单应/本质矩阵
+  诊断和源帧模型预测米制深度辅助 PnP。
+- `src/semantic3d/pose_d2/alignment.py`：把相邻相机坐标组合到短片段
+  `clip_local_aligned` 参考规范，不声称 world frame。
+- `src/semantic3d/pose_d2/residuals.py`：实现点、边界、深度和对象 D2，
+  并区分 visible、out_of_frame、occluded、depth_conflict 和
+  no_correspondence。
+- `src/semantic3d/pose_d2/smoke.py`：只读取 M1/M2/P4-B.5 持久化产物运行
+  离线真实 smoke 和审计报告。
+- `src/semantic3d/pose_d2/__init__.py`：导出 M4 公共接口。
+- `configs/p4c3b_pose_d2_smoke_v1.yaml`：冻结输入片段、质量阈值和禁止事项。
+- `scripts/run_p4c3b_pose_d2_smoke.py`：M4 离线运行入口。
+- `tests/test_p4c3b_pose_d2.py`：覆盖已知旋转平移、位姿方向、身份变换守卫、
+  前景排除、低纹理退化、局部对齐、出画、遮挡和深度冲突。
+
+### 修改文件
+
+- `AGENTS.md`：将当前真实完成阶段、M4 坐标与证据语义写入服务器续接约束。
+- `docs/DEV_LOG.md`：追加本记录。
+
+### 删除文件
+
+- 无。
+
+### 主要变化
+
+- 位姿状态严格区分 `verified_static`、`estimated_valid`、
+  `estimated_low_confidence`、`provider_failed`、
+  `blocked_by_intrinsics`、`blocked_by_correspondence`、
+  `not_applicable` 和 `unknown`。
+- 位姿方向固定为
+  `X_target_camera = T_target_from_source @ X_source_camera`。源帧三维点使用
+  源帧 K 反投影，目标像素使用目标帧 K 进行 PnP 和重投影。
+- 身份变换只在全局流、背景流、单应旋转、本质矩阵运动支持、视差和图像差异
+  的多证据审核达到要求后使用；provider 失败不回退为单位矩阵。
+- 正式 visible instance mask 内点在相机位姿跟踪前被排除；记录候选背景点、
+  被排除前景点、几何内点和退化状态。
+- `fake_1` 两个相邻帧对被验证为静态；`real_1` 两个相邻帧对得到有效
+  模型尺度 PnP 位姿，平移范数约为 0.0198 m 和 0.0112 m；
+  `fake_2` 缺少持久化米制 K/depth，保持 `blocked_by_intrinsics`。
+- 真实 D2 smoke 产生 428 个有效点、204 个有效边界和 7 个有效对象聚合；
+  另有 34 个 depth conflict、35 个 occluded、3 个 out-of-frame 和 1 个
+  invalid-input 记录，全部保持 NaN，不制造高残差。
+- 不同相机帧仅对齐到短片段参考规范 `clip_local_aligned`。参考帧单位阵是
+  坐标规范定义，不是静态判定，也不构成长期 world map。
+- 深度与内参仍为模型预测，不是传感器真值或相机标定真值；D2 是几何质量
+  诊断，不是直接的真假判断。
+
+### 验证命令
+
+```bash
+.venv/bin/python scripts/run_p4c3b_pose_d2_smoke.py
+.venv/bin/python -m pytest tests/test_p4c3b_pose_d2.py -v
+.venv/bin/python -m pytest \
+  tests/test_p4c3b_pose_d2.py \
+  tests/test_pose_estimation_fallbacks.py \
+  tests/test_pose_graph.py \
+  tests/test_sequence_geometry_observation.py \
+  tests/test_dynamic_reprojection_residual.py \
+  tests/test_backprojection.py \
+  tests/test_coordinate_transforms.py \
+  tests/test_p4c3a_method_completion.py \
+  tests/test_p4c3b_metric_provider.py \
+  tests/test_p4c3b_metric_scene3d.py \
+  tests/test_p4c3b_view_scale_history.py -q -rs
+.venv/bin/python -m pytest -q -rs
+```
+
+### 验证结果
+
+- M4 专项：`11 passed`。
+- 相关位姿、几何、D2、M1/M2/M3 回归：`91 passed, 1 warning`。
+- 全量回归：`614 passed, 5 skipped, 1 warning`。
+- 5 个 skip 均为既有可选人体姿态/real_3 observation、P3 shared cache、
+  两项旧 shared-geometry smoke 产物和未提交 strict-v2 六视频 fixture。
+- warning 为本机 NVIDIA driver 与 PyTorch CUDA build 不匹配；M4 使用
+  CPU OpenCV，未运行新模型推理。
+- strict-v1、strict-v2 和 P4-C0/C1/C2 配置 SHA-256 保持不变。
+
+### 当前限制
+
+- 位姿平移尺度来自模型预测米制深度，因此不是传感器真值，跨长序列可能累积
+  尺度和位姿漂移。
+- 当前只验证相邻帧和 2–3 帧短片段，没有回环、全局优化或长期 world map。
+- 目标边界对应使用同 track 可见边界的最近邻诊断；正式 amodal 边界和遮挡后
+  完整轮廓不可用。
+- motion-unreliable 控制项因缺少同一批持久化米制输入而被正确阻断，尚未覆盖
+  “有输入但几何退化”的真实视频样例。
+- 当前 smoke 不建立 D2 对真假视频的检测有效性。
+
+### 下一步计划
+
+- 扩展同一 provider 的短片段覆盖，量化连续复合位姿漂移和内参漂移影响。
+- 增加真实低纹理、动态前景占比高和明显遮挡片段，完善失败/不可见覆盖。
+- 进入 D3 前先冻结 D2 质量门控与坐标约定；D3 只复用 valid D2 和
+  `clip_local_aligned` 数据，不把 blocked/provider failure 当异常证据。
+
+## 2026-07-24 - P4-C3B-M5 D3 Higher-Order Relations, Occlusion, and Reappearance
+
+### 目的
+
+在不训练、不选择阈值和不评价真假性能的前提下，将 P4-C3A-M 的 D3
+公式接口落实为姿态补偿后的三维结构图残差执行器，并建立遮挡、消失、
+出画、漏检、轨迹失败和重现的显式事件契约。
+
+### 新增文件
+
+- `src/semantic3d/d3/contracts.py`：定义 D3 节点、关系、帧图、transition
+  门控、残差及定位引用契约。
+- `src/semantic3d/d3/graph.py`：构建对象、边界、几何轨迹点和可选语义点
+  图，以及对象距离、深度次序、边长、刚性、方位、重叠和可靠接触关系。
+- `src/semantic3d/d3/residuals.py`：实现五类核心 D3 残差及额外关系诊断。
+- `src/semantic3d/d3/events.py`：实现事件分类和六线索重现残差。
+- `src/semantic3d/d3/smoke.py`：复用 M2/M4 持久化产物并运行合成控制验证。
+- `src/semantic3d/d3/__init__.py`：导出 M5 公共接口。
+- `configs/p4c3b_d3_occlusion_v1.yaml`：固定 M5 输入、图规模和事件门控配置。
+- `scripts/run_p4c3b_d3_occlusion_smoke.py`：M5 离线 smoke 入口。
+- `tests/test_p4c3b_d3_occlusion.py`：覆盖 D3 公式、身份/姿态门控、事件类别、
+  重现、多源定位和 NaN 语义。
+
+### 修改文件
+
+- `src/semantic3d/method_completion/d3_relations.py`：向后兼容扩展 D3 关系枚举
+  和公式定义；旧公式级接口继续可用。
+- `docs/DEV_LOG.md`：追加本记录。
+
+### 删除文件
+
+- 无。
+
+### 主要变化
+
+- 所有动态 D3 关系只能在 M4 位姿可用、track/point 身份可靠且两帧都处于
+  `clip_local_aligned` 时计算；否则残差为 NaN，原因记录为
+  `blocked_by_pose_or_correspondence` 或更具体的缺失原因。
+- `R_relative_distance`、`R_depth_order`、`R_edge_length`、
+  `R_local_rigidity` 和 `R_relative_orientation` 已通过合成刚体/扰动对照。
+  对象方位和对象自身相对朝向已分开，未知真实朝向不做猜测。
+- 真实 M2/M4 短片段生成 6 个 D3 帧图、19 条有效对象或边界关系残差。
+  M2 几何点尚无经验证的跨帧 point identity，因此 16 条显式
+  edge/rigidity 诊断被阻断，另外 7 条关系因两帧未同时观测而无效。
+- 合成专项集覆盖 partial/full occlusion、out-of-frame、detector miss、
+  true disappearance、reappearance、ID switch/track failure 和 no-event。
+- 持久化真实对象轨迹产生 7 个 `not_applicable_no_event` 和 1 个
+  `blocked_by_input`；没有正式 partial/full occlusion 事件，不降低标准制造
+  事件。
+- 重现残差同时检查身份、预测位置、深度、物理尺度、三维结构和运动趋势；
+  无重现事件时 combined residual 保持 NaN。
+- 全部图、残差和事件 ID 唯一；invalid residual 没有任何有限值，valid
+  residual 没有 NaN/Inf。所有证据保存 source node/edge、confidence、
+  coordinate frame 和 localization reference。
+
+### 验证命令
+
+```bash
+.venv/bin/python scripts/run_p4c3b_d3_occlusion_smoke.py
+.venv/bin/python -m pytest tests/test_p4c3b_d3_occlusion.py -v
+.venv/bin/python -m pytest \
+  tests/test_p4c3a_method_completion.py \
+  tests/test_p4c3b_metric_scene3d.py \
+  tests/test_p4c3b_pose_d2.py \
+  tests/test_p4c3b_d3_occlusion.py -v
+.venv/bin/python -m pytest -q -rs
+```
+
+### 验证结果
+
+- M5 专项：`11 passed`。
+- D3 兼容、M2、M4 与 M5 联合回归：`49 passed`。
+- 全量回归：`625 passed, 5 skipped, 1 warning`。
+- 5 个 skip 为既有可选姿态权重/real_3 observation、P3 shared cache、
+  两项旧 shared-geometry smoke 产物和未提交 strict-v2 六视频 fixture。
+- warning 为 WSL NVIDIA driver 与 PyTorch CUDA build 不匹配；M5 未运行
+  新模型推理。
+- strict-v1/v2 及 P4-C0/C1/C2 冻结内容未修改。
+
+### 当前限制
+
+- 真实内部结构点缺少稳定跨帧 point identity，因此真实 `R_edge_length` 和
+  `R_local_rigidity` 尚未形成有效证据；当前仅由合成真值验证。
+- 真实对象本体朝向没有可靠 provider，真实 `R_relative_orientation` 不执行。
+- 当前 Mask 是 visible instance mask，不是 amodal mask；真实短片段未发现
+  满足严格条件的 partial/full occlusion 或 reappearance。
+- 米制深度和内参仍是模型预测，不是传感器真值；坐标只在短片段局部对齐，
+  没有长期 world frame。
+- 本阶段没有建立伪造检测有效性结论。
+
+### 下一步计划
+
+- 在不降低质量门控的前提下物化稳定跨帧几何 point identity，并用真实短片段
+  执行 edge-length 和 local-rigidity 分支。
+- 扫描具备正式 visible mask、D2 支撑和深度次序的事件片段，补足真实遮挡与
+  重现覆盖。
+- 证据融合只消费 valid/quality/coverage/localization 字段；缺失、阻断、
+  provider failure 和 not-applicable 分支继续保持掩码。
+
+## 2026-07-24 - P4-C3B-M6 Missing-Aware Evidence Fusion and Localization
+
+### 目的
+
+在不训练分类器、不拟合分布、不选择正式阈值和不评价真假性能的前提下，
+把已有静态、时序、D1、D2、D3、遮挡与重现残差统一为可审计 Evidence，
+建立缺失感知的确定性风险/置信度双输出，并完成时间、空间、对象和轨迹定位
+接口。
+
+### 新增文件
+
+- `src/semantic3d/evidence_fusion/contracts.py`：定义九类分支和统一 Evidence
+  数据契约。
+- `src/semantic3d/evidence_fusion/routing.py`：实现静态、低运动、动态且有
+  位姿、动态但无位姿及 motion-unreliable 路由。
+- `src/semantic3d/evidence_fusion/fusion.py`：实现质量加权、缺失感知的
+  确定性融合及 branch dropout 审计。
+- `src/semantic3d/evidence_fusion/audits.py`：提供 missingness-only、
+  分层覆盖率和 provider failure balance 审计接口。
+- `src/semantic3d/evidence_fusion/temporal.py`：实现帧级聚合、因果中值平滑
+  和显式诊断阈值下的区间生成/合并接口。
+- `src/semantic3d/evidence_fusion/localization.py`：实现对象、边界、点、轨迹
+  和帧级空间证据图及对象/轨迹排名。
+- `src/semantic3d/evidence_fusion/adapters.py`：将 M3/M4/M5 持久化产物离线
+  适配为统一 Evidence，不运行 provider。
+- `src/semantic3d/evidence_fusion/smoke.py`：执行离线融合、定位和审计。
+- `src/semantic3d/evidence_fusion/__init__.py`：导出 M6 公共接口。
+- `configs/p4c3b_evidence_fusion_v1.yaml`：记录输入产物、逐视频原始尺寸、
+  路由、固定分支权重及无正式阈值约束。
+- `scripts/run_p4c3b_evidence_fusion_smoke.py`：M6 离线 smoke 入口。
+- `tests/test_p4c3b_evidence_fusion.py`：覆盖 NaN、provider failure、质量
+  降权、缺失不改风险、路由、时间序列、空间回映和完整 smoke。
+
+### 修改文件
+
+- `docs/DEV_LOG.md`：追加本记录。
+
+### 删除文件
+
+- 无。
+
+### 主要变化
+
+- 每条证据统一保存 residual、applicability、valid、confidence、
+  uncertainty、provider status、failure reason、branch、对象、轨迹、
+  帧、空间/时间引用和 provenance。
+- 风险只使用 applicable 且 valid 的有限残差。缺失分支不进入风险公式，
+  仅降低 available weight ratio 和 evidence confidence；provider failure
+  不能构成有效证据。
+- 分支残差先使用 P4-A 的 median/top-k 稳健聚合，再以固定权重和证据质量
+  加权；输出风险不是概率，也不是真假结论。
+- static/low-motion 保留静态几何、边界、内部结构和尺度稳定性；动态且位姿
+  不可用时保留静态、D1 和局部时序，D2/D3 被显式阻断。
+- missingness-only、branch dropout、分组覆盖率及 provider failure balance
+  仅作为审计接口；当前 smoke 不读取 authenticity label。
+- 时间定位不配置正式阈值时只输出原始和因果平滑序列，不产生异常区间。
+  空间定位只栅格化持久化的点、边界、Mask 或可见边界支撑，不伪造 Mask；
+  无空间支撑的证据仍可按对象/轨迹 ID 排名和追溯。
+- 修复了横屏固定尺寸用于竖屏 `real_1` 的坐标错误。现在按视频保存原始
+  image shape，空间栅格证据由 178 条增至 306 条，对象/轨迹排名为 6 条。
+- 最终离线 smoke 读取 1004 条持久化证据，路由后 1017 条，其中 325 条
+  valid；invalid finite count 和 provider-failure valid count 均为 0。
+- `fake_1` 静态 smoke 有 2 个有效分支，风险 0.006822、证据置信度
+  0.185495；`real_1` 相机运动 smoke 有 2 个有效分支，风险 0.001081、
+  证据置信度 0.102614；`fake_2` motion-unreliable 控制项无有效证据，
+  风险保持 NaN。数值仅用于功能闭环，不比较真假。
+
+### 生成结果
+
+- `outputs/p4c3b_evidence_fusion/evidence_schema_audit.json`
+- `outputs/p4c3b_evidence_fusion/branch_availability_audit.csv`
+- `outputs/p4c3b_evidence_fusion/risk_confidence_baseline.csv`
+- `outputs/p4c3b_evidence_fusion/branch_contribution_audit.csv`
+- `outputs/p4c3b_evidence_fusion/temporal_evidence_sequences.json`
+- `outputs/p4c3b_evidence_fusion/spatial_evidence_manifest.csv`
+- `outputs/p4c3b_evidence_fusion/spatial_evidence_maps.npz`
+- `outputs/p4c3b_evidence_fusion/object_track_rankings.csv`
+- `outputs/p4c3b_evidence_fusion/missingness_shortcut_audit.json`
+- `outputs/p4c3b_evidence_fusion/localization_interface_audit.json`
+- `outputs/p4c3b_evidence_fusion/validation_report.json`
+- `outputs/p4c3b_evidence_fusion/EVIDENCE_FUSION_REPORT.md`
+
+### 验证命令
+
+```bash
+.venv/bin/python scripts/run_p4c3b_evidence_fusion_smoke.py
+.venv/bin/python -m pytest tests/test_p4c3b_evidence_fusion.py -v
+.venv/bin/python -m pytest \
+  tests/test_p4c3b_evidence_fusion.py \
+  tests/test_p4c3b_d3_occlusion.py \
+  tests/test_p4c3b_pose_d2.py \
+  tests/test_p4c3b_view_scale_history.py \
+  tests/test_aggregation_v2.py -q -rs
+.venv/bin/python -m pytest -q -rs
+```
+
+### 验证结果
+
+- M6 专项：`11 passed`。
+- M3/M4/M5/M6 与 P4-A 联合回归：`46 passed`。
+- 全量回归：`636 passed, 5 skipped, 1 warning`。
+- 5 个 skip 均为既有本地可选工件缺失：人体姿态/real_3 observation、
+  P3 shared cache、两项旧 shared-geometry smoke 产物和未提交 strict-v2
+  六视频 fixture；M6 关键测试无 skip。
+- warning 为 WSL NVIDIA driver 与 PyTorch CUDA build 不匹配；M6 不运行
+  provider 或模型推理。
+- strict-v1 SHA-256 保持
+  `e86466e19fe3e1663fa855fdf73843cf7ab8b5b6c8fa8771aa46172f6b726a6b`；
+  strict-v2 SHA-256 保持
+  `3c55c8eb42e19d2447b00794085d8e6fa233c37a2071ef51f23b447d23ef268b`。
+
+### 当前限制
+
+- 各分支残差尚未统计校准到共同分布，固定变换和权重只是无学习诊断基线。
+- 当前真实 smoke 只有两个具有有效融合证据的短片段，不能说明方法有效性。
+- D1 没有进入当前持久化 smoke；真实 D3 内部结构、遮挡和重现覆盖仍不足。
+- 当前对象定位中 M4 object D2 使用可见边界支撑点，不等价于完整对象 Mask；
+  reference-only 证据不会被伪造成像素热图。
+- 未执行 real/fake missingness balance；接口已存在，但当前配置故意只使用
+  无标签 source groups。
+- 时间区间接口尚未选择正式阈值，因此当前不输出最终异常片段判定。
+
+### 下一步计划
+
+- 在正式数据 split 和冻结阈值协议就绪后，先做分支尺度校准与 missingness
+  平衡审计，再考虑学习融合。
+- 扩充真实 D1、D3、遮挡和重现事件覆盖，同时保留 provider failure 与
+  not-applicable 的独立状态。
+- 在不读取真假标签的定位验证中补充正式 Mask、边界、点和轨迹的可视化，
+  检查证据能否完整追溯到原观测。
