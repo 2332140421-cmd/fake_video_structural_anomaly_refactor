@@ -48,20 +48,28 @@ _REQUIRED_GITIGNORE = (
     "tmp/**", "cache/**",
 )
 _REQUIRED_PATHS = (
+    "AGENTS.md",
     ".gitignore",
     "pyproject.toml",
     "requirements-lock.txt",
     "requirements-inference-lock.txt",
     "configs/runtime/server_template.yaml",
     "configs/model_registry/yolo_weights_v1.yaml",
+    "configs/model_registry/unidepth_v2_vits14_v1.yaml",
+    "configs/handoff/p4c3b_m2_server_handoff_v1.yaml",
+    "configs/p4c3b_metric_provider_smoke_v1.yaml",
+    "configs/p4c3b_metric_scene3d_v1.yaml",
     "configs/data_registry/dataset_registry_schema_v1.yaml",
     "configs/data_registry/local_six_video_smoke_v1.yaml",
     "scripts/bootstrap_p4_server.sh",
     "scripts/verify_p4_git_checkout.py",
     "scripts/fetch_registered_models.py",
     "scripts/validate_git_release.py",
+    "scripts/verify_p4c3b_server_handoff.py",
     "docs/SERVER_ENVIRONMENT.md",
     "docs/SERVER_DATA_SETUP.md",
+    "docs/SERVER_HANDOFF_P4C3B_M2.md",
+    "docs/GIT_UPLOAD_CHECKLIST.md",
 )
 
 
@@ -146,8 +154,19 @@ def validate_git_release(
     ignore_text = (project / ".gitignore").read_text(encoding="utf-8")
     ignore_checks = {pattern: pattern in ignore_text for pattern in _REQUIRED_GITIGNORE}
     tracked = _tracked(project)
-    required_exists = {path: (project / path).is_file() for path in _REQUIRED_PATHS}
-    required_tracked = {path: path in tracked for path in _REQUIRED_PATHS}
+    handoff_path = project / "configs/handoff/p4c3b_m2_server_handoff_v1.yaml"
+    handoff_required = (
+        tuple(
+            yaml.safe_load(handoff_path.read_text(encoding="utf-8")).get(
+                "required_source_paths", ()
+            )
+        )
+        if handoff_path.is_file()
+        else ()
+    )
+    required_paths = tuple(dict.fromkeys((*_REQUIRED_PATHS, *handoff_required)))
+    required_exists = {path: (project / path).is_file() for path in required_paths}
+    required_tracked = {path: path in tracked for path in required_paths}
     protocol_artifacts_not_ignored = {}
     for relative in (
         "outputs/p4c1_experiment_manifest/experiment_manifest.jsonl",

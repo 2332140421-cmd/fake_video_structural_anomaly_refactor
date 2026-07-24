@@ -6,7 +6,11 @@ from typing import Sequence
 
 import numpy as np
 
-from ..shared_3d_observation import Point2DObservation, Point3DObservation
+from ..shared_3d_observation import (
+    Point2DObservation,
+    Point3DObservation,
+    is_camera_coordinate_frame,
+)
 from .camera import validate_intrinsics
 
 
@@ -31,7 +35,7 @@ def project_point(point: Point3DObservation, K: np.ndarray) -> Point2DObservatio
     matrix = validate_intrinsics(K)
     if not point.valid:
         return _invalid_projection(point, point.missing_reason or "invalid_3d_point")
-    if point.coordinate_frame != "camera":
+    if not is_camera_coordinate_frame(point.coordinate_frame):
         return _invalid_projection(point, "projection_requires_camera_frame")
     xyz = point.as_array()
     if xyz[2] <= 0.0:

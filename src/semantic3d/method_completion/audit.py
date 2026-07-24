@@ -6,6 +6,7 @@ import csv
 import hashlib
 import json
 import math
+import os
 from collections import Counter
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -551,9 +552,11 @@ def build_method_completion_audit(
     point_rows = _read_parquet(dataset_root / "evidence/point_evidence.parquet")
     clip_rows = _read_parquet(dataset_root / "evidence/clip_evidence.parquet")
     object_rows = _read_parquet(dataset_root / "observations/objects.parquet")
-    strict_rsd = Path(
-        "/mnt/e/fake_video_structural_anomaly_archive/outputs/evaluation/"
-        "rsd_strict_v2/per_pair_rsd_details.csv"
+    configured_strict = os.environ.get("SEMANTIC3D_STRICT_V2_RESULT", "")
+    strict_rsd = (
+        Path(configured_strict)
+        if configured_strict
+        else root / "outputs/evaluation/rsd_strict_v2/per_pair_rsd_details.csv"
     )
     if not strict_rsd.exists():
         strict_rsd = root / "outputs/evaluation/rsd_strict_v2/per_pair_rsd_details.csv"

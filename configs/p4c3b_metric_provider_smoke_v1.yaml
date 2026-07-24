@@ -1,0 +1,32 @@
+schema_version: semantic3d_p4c3b_metric_provider_smoke_v1
+stage: P4-C3B-M1
+provider:
+  name: unidepth_v2
+  model_family: UniDepthV2 ViT-S14
+  weights_path: checkpoints/unidepth-v2-vits14
+  expected_weight_sha256: 93705cb3295dd7476b44911b8a55f5215bf74e8d5eccd27cecdb1b338270a648
+  device: cpu
+  precision: fp32
+  resolution_level: 0
+  offline_only: true
+inputs:
+  - source_name: real_1
+    video_path: data/tests_videos/tests_real_videos/real_1.mp4
+    frame_indices: [30, 31, 32]
+  - source_name: fake_1
+    video_path: data/tests_videos/tests_fake_videos/fake_1.mp4
+    frame_indices: [0, 1, 2]
+reference_observations:
+  dataset_root: outputs/structural_enhancement_dataset/p4b5_six_video_full_observation
+  use_formal_instance_masks: true
+  use_relative_depth_for_rank_audit: true
+quality_audit:
+  boundary_fraction: 0.05
+  rank_sample_stride: 8
+  repeat_first_frame: true
+scope_constraints:
+  full_984_frame_build: false
+  training: false
+  distribution_fitting: false
+  threshold_selection: false
+  authenticity_performance_evaluation: false

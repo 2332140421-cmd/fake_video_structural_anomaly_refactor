@@ -229,8 +229,10 @@ def build_md2_audit(
     output = output_dir.resolve()
     output.mkdir(parents=True, exist_ok=True)
     dataset = dataset_root or root / "outputs/structural_enhancement_dataset/p4b5_six_video_full_observation"
-    strict_path = strict_result_path or Path(
-        "/mnt/e/fake_video_structural_anomaly_archive/outputs/evaluation/rsd_strict_v2/per_pair_rsd_details.csv"
+    strict_path = (
+        strict_result_path
+        if strict_result_path is not None
+        else root / "outputs/evaluation/rsd_strict_v2/per_pair_rsd_details.csv"
     )
     required = [dataset / "manifests/clips.parquet", dataset / "manifests/videos.parquet", dataset / "observations/objects.parquet", dataset / "observations/tracks.parquet", strict_path]
     missing = [str(path) for path in required if not path.is_file()]

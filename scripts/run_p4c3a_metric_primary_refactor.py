@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -31,7 +32,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--strict_result_path",
         type=Path,
-        default=Path("/mnt/e/fake_video_structural_anomaly_archive/outputs/evaluation/rsd_strict_v2/per_pair_rsd_details.csv"),
+        default=Path(
+            os.environ.get(
+                "SEMANTIC3D_STRICT_V2_RESULT",
+                str(
+                    PROJECT_ROOT
+                    / "outputs/evaluation/rsd_strict_v2/per_pair_rsd_details.csv"
+                ),
+            )
+        ),
     )
     return parser.parse_args()
 

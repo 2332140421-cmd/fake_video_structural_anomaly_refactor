@@ -42,3 +42,25 @@ bash scripts/bootstrap_p4_server.sh
 
 The script does not download formal data, train a model, modify Git history, or
 run a formal batch.
+
+## P4-C3B Metric Provider
+
+P4-C3B-M1/M2 adds an external UniDepthV2 provider. Its source and weights are
+not committed to Git. Follow `docs/SERVER_HANDOFF_P4C3B_M2.md` to install the
+pinned source revision and stage the registered weight/config files. The base
+bootstrap verifies source compatibility but does not silently clone UniDepth or
+download its weights.
+
+After checkout, run:
+
+```bash
+.venv/bin/python scripts/verify_p4c3b_server_handoff.py --source-only
+```
+
+Source readiness does not imply that model files, smoke videos, M1 arrays, or
+P4-B.5 formal observations are available.
+
+Historical archive inputs are optional and machine-specific. Set
+`SEMANTIC3D_ARCHIVE_ROOT` or `SEMANTIC3D_STRICT_V2_RESULT` explicitly when a
+server has those files; repository defaults no longer assume a WSL `/mnt/e`
+mount.

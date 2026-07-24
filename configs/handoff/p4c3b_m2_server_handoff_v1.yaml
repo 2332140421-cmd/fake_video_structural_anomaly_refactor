@@ -1,0 +1,110 @@
+schema_version: semantic3d_server_handoff_v1
+handoff_id: p4c3b_m2_server_handoff_v1
+current_stage: P4-C3B-M2
+created_at: "2026-07-24"
+
+verified_status:
+  metric_provider_adapter_complete: true
+  metric_provider_real_inference_executed: true
+  camera_frame_metric_scene_complete: true
+  scene_surface_points_verified: true
+  object_surface_points_verified: true
+  metric_boundary_points_verified: true
+  geometric_track_points_verified: true
+  semantic_keypoints_available: false
+  single_frame_structure_graph_complete: true
+  world_frame_reconstruction_complete: false
+  method_effectiveness_established: false
+
+required_source_paths:
+  - AGENTS.md
+  - configs/handoff/p4c3b_m2_server_handoff_v1.yaml
+  - docs/SERVER_HANDOFF_P4C3B_M2.md
+  - docs/GIT_UPLOAD_CHECKLIST.md
+  - docs/SERVER_ENVIRONMENT.md
+  - docs/SERVER_DATA_SETUP.md
+  - src/semantic3d/method_completion/metric_depth_adapters.py
+  - src/semantic3d/method_completion/metric_provider_smoke.py
+  - src/semantic3d/metric_scene3d/__init__.py
+  - src/semantic3d/metric_scene3d/contracts.py
+  - src/semantic3d/metric_scene3d/image_geometry.py
+  - src/semantic3d/metric_scene3d/reconstruction.py
+  - src/semantic3d/metric_scene3d/boundary.py
+  - src/semantic3d/metric_scene3d/structure_points.py
+  - src/semantic3d/metric_scene3d/structure_graph.py
+  - src/semantic3d/metric_scene3d/smoke.py
+  - scripts/run_p4c3b_metric_provider_smoke.py
+  - scripts/run_p4c3b_metric_scene3d_smoke.py
+  - scripts/verify_p4c3b_server_handoff.py
+  - tests/test_p4c3b_metric_provider.py
+  - tests/test_p4c3b_metric_scene3d.py
+  - tests/test_p4c3b_server_handoff.py
+  - configs/p4c3b_metric_provider_smoke_v1.yaml
+  - configs/p4c3b_metric_scene3d_v1.yaml
+  - configs/model_registry/unidepth_v2_vits14_v1.yaml
+
+frozen_files:
+  configs/scale_priors_strict_v1.yaml: e86466e19fe3e1663fa855fdf73843cf7ab8b5b6c8fa8771aa46172f6b726a6b
+  configs/scale_priors_strict_v2.yaml: 3c55c8eb42e19d2447b00794085d8e6fa233c37a2071ef51f23b447d23ef268b
+  configs/p4c0_experiment_protocol_v1.yaml: 8a4a8f5d6ac795646876042a84c9b0a4fdb1d06bec31045b734c3dfb64f8a304
+  configs/p4c1_experiment_manifest_v1.yaml: ec48e26da4f434a1356959997b546ac30dc9e439281b2e09174f7c86a35ce086
+  configs/p4c2_formal_data_readiness_v1.yaml: fe8c3cda137337330209528f4025d0593fefa42886be89eb214bfd58d38a8d89
+
+model_registries:
+  - configs/model_registry/yolo_weights_v1.yaml
+  - configs/model_registry/unidepth_v2_vits14_v1.yaml
+
+provider_source:
+  package: unidepth
+  version: "0.1"
+  repository: https://github.com/lpiccinelli-eth/UniDepth
+  source_revision: 8d8cfe4c7ee15297099983607febf0d4f32eb3d6
+  automatic_download_allowed: false
+
+smoke_data_registry: configs/data_registry/local_six_video_smoke_v1.yaml
+
+local_artifacts:
+  p4c3a_m_d2_synthetic:
+    root: outputs/p4c3a_method_completion
+    sentinel: outputs/p4c3a_method_completion/d2_synthetic_validation.json
+    sentinel_sha256: ad3976d2ae31815d9bbd3da54ce9f0f39ccdcd8c9f5653260084fe89a417bc37
+    approximate_size: small
+    git_tracked: false
+    rebuildable: true
+  m1_metric_provider:
+    root: outputs/p4c3b_metric_provider_smoke
+    sentinel: outputs/p4c3b_metric_provider_smoke/metric_depth_frame_manifest.csv
+    sentinel_sha256: 8bc79256879742dea4df77b3572882a71d550203651272137b6bcb2ee81d21a9
+    approximate_size: 137M
+    git_tracked: false
+    rebuildable: true
+  p4b5_formal_observations:
+    root: outputs/structural_enhancement_dataset/p4b5_six_video_full_observation
+    sentinel: outputs/structural_enhancement_dataset/p4b5_six_video_full_observation/dataset_manifest.json
+    sentinel_sha256: d74e9f9f3b457ca32406a04050d74fbd1ed0309b1b4b18e94142850623c4ccb1
+    approximate_size: 2.3G
+    git_tracked: false
+    rebuildable: true
+  m2_metric_scene3d:
+    root: outputs/p4c3b_metric_scene3d
+    sentinel: outputs/p4c3b_metric_scene3d/validation_report.json
+    sentinel_sha256: 47423c2f7cede2226ecbf396099ad82f11a0382004b0fcfdfe6807728eb58e1e
+    approximate_size: 2.3M
+    git_tracked: false
+    rebuildable: true
+
+required_commands:
+  source_validation: .venv/bin/python scripts/verify_p4c3b_server_handoff.py --source-only
+  focused_tests: .venv/bin/python -m pytest tests/test_p4c3b_metric_provider.py tests/test_p4c3b_metric_scene3d.py -q -rs
+  full_tests: .venv/bin/python -m pytest -q -rs
+  m1_smoke: .venv/bin/python scripts/run_p4c3b_metric_provider_smoke.py
+  m2_smoke: .venv/bin/python scripts/run_p4c3b_metric_scene3d_smoke.py
+
+next_stage_policy:
+  automatically_start_next_stage: false
+  recommended_readiness_topic: view_observability_and_temporal_size_materialization
+  require_new_user_prompt: true
+  world_frame_fusion_authorized: false
+  training_authorized: false
+  threshold_selection_authorized: false
+  authenticity_evaluation_authorized: false

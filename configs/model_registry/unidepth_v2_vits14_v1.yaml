@@ -1,0 +1,27 @@
+schema_version: semantic3d_model_weight_registry_v1
+model_name: UniDepthV2
+variant: v2-vits14
+purpose: monocular_model_predicted_metric_depth_and_intrinsics
+source:
+  repository: https://github.com/lpiccinelli-eth/UniDepth
+  source_revision: 8d8cfe4c7ee15297099983607febf0d4f32eb3d6
+  model_repository: https://huggingface.co/lpiccinelli/unidepth-v2-vits14
+  model_revision: 038c238f06c87b6c2f5b3749fd51fbf442b1f218
+license_status: verified_cc_by_nc_4_0_research_only
+license: CC-BY-NC-4.0
+expected_library: unidepth
+expected_version: "0.1"
+weights_path: checkpoints/unidepth-v2-vits14/model.safetensors
+file_size: 136777580
+sha256: 93705cb3295dd7476b44911b8a55f5215bf74e8d5eccd27cecdb1b338270a648
+config_path: checkpoints/unidepth-v2-vits14/config.json
+config_sha256: ecc1f898690debe387d10329cca5d9d66a0a447ce83c3a2a7ae3673c7ce43cfe
+migration_policy: stage_local_files_by_verified_sha256_do_not_commit_weights
+automatic_download_allowed: false
+sensor_ground_truth: false
+output_semantics:
+  raw_depth_definition: ray_distance
+  standardized_depth_definition: z_depth
+  depth_unit: meter
+  metric_scale_status: model_predicted
+  confidence_semantics: frame_relative_scale_invariant_log_error_ranking

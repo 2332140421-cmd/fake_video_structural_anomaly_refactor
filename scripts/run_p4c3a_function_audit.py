@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -28,7 +29,8 @@ def parse_args() -> argparse.Namespace:
         "--output_dir", default="outputs/p4c3a_function_audit"
     )
     parser.add_argument(
-        "--archive_root", default="/mnt/e/fake_video_structural_anomaly_archive"
+        "--archive_root",
+        default=os.environ.get("SEMANTIC3D_ARCHIVE_ROOT", "outputs/archive"),
     )
     return parser.parse_args()
 
@@ -49,4 +51,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -55,6 +55,38 @@ class ReconstructionFrame(str, Enum):
     UNKNOWN = "unknown"
 
 
+class CoordinateFrame(str, Enum):
+    """Explicit coordinate frame carried by reconstructed 3D observations.
+
+    ``camera`` and ``world`` remain accepted by compatibility helpers below,
+    but new metric reconstruction code must use the more specific values.
+    """
+
+    CAMERA_FRAME_METRIC = "camera_frame_metric"
+    CAMERA_FRAME_RELATIVE = "camera_frame_relative"
+    CLIP_LOCAL_ALIGNED = "clip_local_aligned"
+    WORLD_FRAME = "world_frame"
+    UNKNOWN = "unknown"
+
+
+def is_camera_coordinate_frame(value: str | CoordinateFrame) -> bool:
+    """Return whether a frame is a legacy or explicit camera coordinate frame."""
+
+    normalized = value.value if isinstance(value, CoordinateFrame) else str(value)
+    return normalized in {
+        "camera",
+        CoordinateFrame.CAMERA_FRAME_METRIC.value,
+        CoordinateFrame.CAMERA_FRAME_RELATIVE.value,
+    }
+
+
+def is_world_coordinate_frame(value: str | CoordinateFrame) -> bool:
+    """Return whether a frame is a legacy or explicit world coordinate frame."""
+
+    normalized = value.value if isinstance(value, CoordinateFrame) else str(value)
+    return normalized in {"world", CoordinateFrame.WORLD_FRAME.value}
+
+
 @dataclass(frozen=True)
 class Point2DObservation:
     """One image-plane point with explicit validity and provenance."""
@@ -230,14 +262,18 @@ class Object3DObservation:
         center_camera = self.center_3d_camera
         center_world = self.center_3d_world
         if center_camera is None and self.center_3d is not None:
-            if self.center_3d.coordinate_frame == "camera":
+            if is_camera_coordinate_frame(self.center_3d.coordinate_frame):
                 center_camera = self.center_3d
-            elif self.center_3d.coordinate_frame == "world":
+            elif is_world_coordinate_frame(self.center_3d.coordinate_frame):
                 center_world = self.center_3d
-        if center_camera is not None and center_camera.coordinate_frame != "camera":
-            raise ValueError("center_3d_camera must use coordinate_frame='camera'.")
-        if center_world is not None and center_world.coordinate_frame != "world":
-            raise ValueError("center_3d_world must use coordinate_frame='world'.")
+        if center_camera is not None and not is_camera_coordinate_frame(
+            center_camera.coordinate_frame
+        ):
+            raise ValueError("center_3d_camera must use a camera coordinate frame.")
+        if center_world is not None and not is_world_coordinate_frame(
+            center_world.coordinate_frame
+        ):
+            raise ValueError("center_3d_world must use a world coordinate frame.")
         world_point_groups = (
             None
             if self.boundary_points_3d_world is None
@@ -250,13 +286,13 @@ class Object3DObservation:
             else tuple(self.structure_points_3d_world),
         )
         if any(
-            point.coordinate_frame != "world"
+            not is_world_coordinate_frame(point.coordinate_frame)
             for group in world_point_groups
             if group is not None
             for point in group
             if point.valid
         ):
-            raise ValueError("World 3D point fields must use coordinate_frame='world'.")
+            raise ValueError("World 3D point fields must use a world coordinate frame.")
 
         if self.scale_quality is None:
             scale_quality = quality if self.observed_scale_3d is not None else 0.0

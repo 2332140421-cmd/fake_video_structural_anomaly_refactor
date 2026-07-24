@@ -3390,3 +3390,319 @@ strict-v2 对象对尺度—深度残差为 fallback/audit。该阶段只完成�
 - 为 smoke 帧提供可信 K 或记录经过审核的内参来源，先验证米制尺寸闭环和 provider 间尺度偏差，不直接评价真假。
 - 将通过门控的按维度尺度观测物化为 track history，再验证 metric 与 relative-local 的时序路径。
 - metric smoke 通过且冻结回归保持不变后，再决定是否进入正式批量特征构建；本阶段不启动训练或性能评估。
+
+## 2026-07-24 - P4-C3B-M1 Real Metric Depth Provider and Camera Smoke
+
+### 目的
+
+将 P4-C3A-MD2 中 `interface_only` 的 UniDepthV2 米制深度接口升级为真实、
+离线、可审计的 provider，并在一个真实视频和一个 AI 生成视频的少量帧上验证
+模型预测米制深度、深度定义、模型预测内参及上游质量统计。该 smoke 不使用真假
+标签计算性能，也不代表传感器深度真值。
+
+### 新增文件
+
+- `configs/model_registry/unidepth_v2_vits14_v1.yaml`：登记官方源码/模型 revision、CC-BY-NC-4.0 许可状态、本地权重路径、大小和 SHA-256。
+- `configs/p4c3b_metric_provider_smoke_v1.yaml`：固定 CPU/FP32、resolution level 0、`real_1` 第30-32帧和 `fake_1` 第0-2帧的无性能评价 smoke 范围。
+- `src/semantic3d/method_completion/metric_provider_smoke.py`：确定性抽帧、真实推理、DepthObservation/CameraObservation 落盘、正式 Mask 区域、相对深度秩一致性、边界质量、时序尺度漂移和内参漂移审计。
+- `scripts/run_p4c3b_metric_provider_smoke.py`：P4-C3B-M1 命令行入口。
+- `tests/test_p4c3b_metric_provider.py`：离线加载、权重 SHA、深度定义、模型预测 K、失败路径、重复推理和 smoke 产物测试。
+
+### 修改文件
+
+- `src/semantic3d/method_completion/metric_depth_adapters.py`：实现真实 `UniDepthV2Adapter`，增加统一帧结果、lazy import、强制离线、本地权重 SHA 门控、CPU/CUDA 与 FP32/FP16 检查、运行时间/显存、confidence/uncertainty 语义和 provider provenance；其余三个 adapter 保持 `interface_only`。
+- `src/semantic3d/method_completion/__init__.py`：公开新的 adapter 结果、错误和 SHA 工具。
+- `docs/DEV_LOG.md`：追加本记录。
+
+### 删除文件
+
+- 无。
+
+### 主要变化
+
+- UniDepthV2 源码固定在 revision `8d8cfe4c7ee15297099983607febf0d4f32eb3d6`，ViT-S14 模型固定在 revision `038c238f06c87b6c2f5b3749fd51fbf442b1f218`。
+- 本地 `model.safetensors` 大小为136777580字节，SHA-256 为 `93705cb3295dd7476b44911b8a55f5215bf74e8d5eccd27cecdb1b338270a648`；adapter 在缺少 expected SHA 或摘要不匹配时阻断推理，不自动联网。
+- 模型内部原始射线半径以 `ray_distance` 保存；公开推理输出的三维点 Z 分量作为标准 `z_depth` 进入 `DepthObservation`。单位声明为米，尺度状态为 `model_predicted`，明确不是传感器真值。
+- UniDepth 名为 confidence 的输出按官方定义作为帧内相对 scale-invariant log error 保存为 uncertainty；另生成 `[0,1]` 反向秩质量，仅用于门控，不是校准概率。
+- 每帧保存米制 Z depth、valid mask、rank quality、raw uncertainty、raw radius 和模型预测 K。K 的来源为 `model_predicted`，不得解释为 calibrated/metadata intrinsics；provider 未输出内参置信度，因此明确保存为 NaN/`model_predicted_unscored`，位姿仍不可用。
+- 正式实例 Mask 直接复用 P4-B.5 只读产物。6帧全部生成有效深度；`fake_1` 8个对象区域、`real_1` 3个对象区域均完成 Mask 内深度审计，Mask 内有效比例均为1.0。
+- 6帧深度均无 NaN/Inf，边界有效比例为1.0；米制深度与既有单目相对深度的帧内秩相关为约0.817-0.978，仅作为上游一致性诊断。
+- 连续三帧全局深度中位数最大 absolute-log drift：`fake_1=0.02379`、`real_1=0.01650`（最终报告以 JSON 为准）；模型预测内参按帧审计，不视为静态标定值。
+- CPU/FP32 实际推理约0.93-1.04秒/帧；同帧重复推理最大绝对差为0。GPU未执行，`peak_gpu_memory=0`。
+- `metric_provider_adapter_complete=true`、`metric_provider_real_inference_executed=true`、`metric_depth_output_verified=true`、`ready_for_metric_scene3d_build=true`、`ready_for_full_984_frame_build=false`、`method_effectiveness_established=false`。
+
+### 验证命令
+
+```bash
+.venv/bin/python -m pytest tests/test_p4c3b_metric_provider.py -q -rs
+.venv/bin/python scripts/run_p4c3b_metric_provider_smoke.py
+.venv/bin/python -m pytest \
+  tests/test_p4c3a_metric_single_object_primary.py \
+  tests/test_p4c3a_robust_object_extent.py \
+  tests/test_p4c3a_scale_evidence_router.py \
+  tests/test_p4c3b_metric_provider.py -q -rs
+.venv/bin/python -m pytest -q -rs
+```
+
+### 验证结果
+
+- P4-C3B-M1 专项：9 passed、0 skipped、1 warning。
+- MD2 + M1 联合专项：27 passed、0 skipped、1 warning。
+- 全量回归：576 passed、5 skipped、1 warning，最终耗时131.38秒。
+- 5个 skip 均为既有可选本地资源：pose weight/real_3 observation、P3 shared cache、2项旧 shared-geometry smoke 产物和未提交的 strict-v2 六视频 fixture；P4-C3B-M1 测试无 skip。
+- warning 为已安装 PyTorch CUDA build 与当前 NVIDIA driver 不兼容；本次真实推理按配置使用 CPU/FP32 成功完成。
+- smoke 请求6帧、有效6帧、provider failure为0；全部必要报告已写入 `outputs/p4c3b_metric_provider_smoke/`。
+
+### 冻结检查
+
+- strict-v1：`e86466e19fe3e1663fa855fdf73843cf7ab8b5b6c8fa8771aa46172f6b726a6b`，未改变。
+- strict-v2：`3c55c8eb42e19d2447b00794085d8e6fa233c37a2071ef51f23b447d23ef268b`，未改变。
+- P4-C0 config：`8a4a8f5d6ac795646876042a84c9b0a4fdb1d06bec31045b734c3dfb64f8a304`，未改变。
+- P4-C1 config：`ec48e26da4f434a1356959997b546ac30dc9e439281b2e09174f7c86a35ce086`，未改变。
+- P4-C2 config：`fe8c3cda137337330209528f4025d0593fefa42886be89eb214bfd58d38a8d89`，未改变。
+- P4-C3A-M D2 合成验证：`ad3976d2ae31815d9bbd3da54ce9f0f39ccdcd8c9f5653260084fe89a417bc37`，未改变。
+- 本轮没有写入 strict-v2 历史结果、D1 evidence 或 P4-C3A-MD2 六视频只读结果目录。
+
+### 当前限制
+
+- 米制值是单目模型预测，未与传感器真值或标定场景比较，绝对尺度误差尚未知。
+- K 为逐帧模型预测，短片段中仍有漂移；不能当作 calibrated 相机内参，也没有相机位姿。
+- confidence 是帧内相对质量排序，不可跨视频解释为统一概率。
+- xFormers、CUDA KNN 和可选 CUDA patch op 未安装；本次 V2 推理可在 CPU 正常运行，但全984帧成本和服务器 GPU兼容性尚未审计。
+- Depth Pro、Metric3Dv2、Depth Anything V2 metric 继续为 `interface_only`。
+- 只验证2段视频共6帧的上游可用性，没有训练、分布拟合、阈值选择或真假性能评价。
+
+### 下一步计划
+
+- 在进入全984帧前，先用当前 adapter 构建少量 `MetricObjectRegion`，真实执行单对象米制尺度分支并审计对象截断、Mask、K和深度不确定性门控。
+- 在服务器修复 PyTorch/CUDA 驱动兼容后重复同一 smoke，比较 CPU/GPU 数值一致性、显存和吞吐。
+- 若短片段 K 与绝对尺度稳定性满足门控，再制定分批全帧 scene3d 构建方案；仍不直接进入真假性能评价。
+## 2026-07-24 - P4-C3B-M2 Single-Frame Metric Visible-Surface Scene3D
+
+### 目的
+
+在 P4-C3B-M1 已保存的 UniDepthV2 模型估计米制深度、预测相机内参和
+P4-B.5 正式可见实例 mask 基础上，建立可审计的单帧米制三维结构。
+本阶段只构建“单帧相机坐标系下的米制可见表面 2.5D 结构”，不执行
+跨帧世界坐标融合，不把模型估计米制深度描述为传感器真值，也不进行
+训练、阈值选择或真假性能评价。
+
+### 新增文件
+
+- `src/semantic3d/metric_scene3d/contracts.py`：定义点类型、米制表面点、
+  三维边界点、对象点云、单帧结构边和结构图契约。
+- `src/semantic3d/metric_scene3d/image_geometry.py`：显式处理 resize、crop、
+  padding/letterbox、内参变换和 mask/depth 异分辨率对齐。
+- `src/semantic3d/metric_scene3d/reconstruction.py`：实现 z-depth/ray-distance
+  统一、批量反投影、场景可见表面点、对象点云、稳健 extent 和共享
+  `Object3DObservation` 适配。
+- `src/semantic3d/metric_scene3d/boundary.py`：轮廓简化、均匀弧长采样、
+  前景/背景侧深度、深度跳变和三维边界重建。
+- `src/semantic3d/metric_scene3d/structure_points.py`：正式 mask 内部的纹理、
+  深度平滑和空间分散几何跟踪点候选选择。
+- `src/semantic3d/metric_scene3d/structure_graph.py`：单帧边界相邻、kNN 和
+  可选半径边结构图。
+- `src/semantic3d/metric_scene3d/__init__.py`：导出 M2 公共接口。
+- `scripts/run_p4c3b_metric_scene3d_smoke.py`：只读消费 M1/P4-B.5 产物并生成
+  M2 smoke 审计结果。
+- `configs/p4c3b_metric_scene3d_v1.yaml`：固定 6 个 M1 smoke 帧及重建参数。
+- `tests/test_p4c3b_metric_scene3d.py`：覆盖投影闭环、图像变换、边界深度、
+  稳健 extent、点语义、NaN 和共享契约。
+
+### 修改文件
+
+- `src/semantic3d/shared_3d_observation.py`：新增明确的 `CoordinateFrame`，
+  同时兼容旧 `camera/world` 字符串。
+- `src/semantic3d/__init__.py`：通过现有 lazy API 导出 `CoordinateFrame`。
+- `src/semantic3d/geometry/backprojection.py`：允许调用方显式指定坐标系，
+  默认值仍保持旧接口兼容。
+- `src/semantic3d/geometry/projection.py`：接受旧 camera frame 和新的
+  `camera_frame_metric/camera_frame_relative`。
+- `docs/DEV_LOG.md`：追加本记录。
+
+### 删除文件
+
+- 无。
+
+### 主要变化
+
+- M2 真实输出仅使用 `camera_frame_metric`；审计中 world-frame 点为 0。
+- 像素反投影使用 `X=(u-cx)Z/fx`、`Y=(v-cy)Z/fy`、`Z=z_depth`。
+- 场景点仅表示单帧可见表面，不声称是完整三维场景。
+- 对象 extent 使用每轴 5%--95% 稳健分位数，不使用原始 min/max。
+- 边界点保存前景深度、背景深度和边界深度跳变；背景缺失降低质量但不
+  伪造数值。
+- 通用内部点明确标记为 `geometric_track_point`，不是 semantic keypoint；
+  跨帧 trackability 当前为未验证。
+- 单帧结构图保存米制边长、相对深度、方向、边类型和质量；未计算 D3。
+- 缺失坐标保持 NaN/invalid，不使用零坐标；provider/pose/模态缺失不进入
+  异常证据。
+
+### 真实 Smoke 结果
+
+- 输入：`fake_1` 帧 0--2、`real_1` 帧 30--32，共 6 帧。
+- 场景可见表面：6/6 帧有效，每帧下采样 3600 点。
+- 对象点云：11/11 有效。
+- 三维边界点：352/352 有效。
+- 几何跟踪点候选：220 个有效。
+- 单帧结构图：11 个有效，共 1158 条有效边。
+- 具有至少两个有效帧的对象轨迹：4 条，因此可进入后续时序尺度
+  materialization；本阶段未执行时序残差。
+- semantic keypoint：未执行类别专用 provider，状态为不可用。
+- world-frame reconstruction：false。
+- method effectiveness established：false。
+
+### 验证命令
+
+```bash
+.venv/bin/python -m pytest tests/test_p4c3b_metric_scene3d.py -q
+.venv/bin/python -m pytest \
+  tests/test_backprojection.py \
+  tests/test_p0_shared_3d_contracts.py \
+  tests/test_object_3d_reconstruction.py \
+  tests/test_p4c3a_metric_single_object_primary.py -q
+.venv/bin/python scripts/run_p4c3b_metric_scene3d_smoke.py
+.venv/bin/python -m pytest -q -rs
+sha256sum \
+  configs/scale_priors_strict_v1.yaml \
+  configs/scale_priors_strict_v2.yaml \
+  configs/p4c0_experiment_protocol_v1.yaml \
+  configs/p4c1_experiment_manifest_v1.yaml \
+  configs/p4c2_formal_data_readiness_v1.yaml \
+  outputs/p4c3a_method_completion/d2_synthetic_validation.json
+```
+
+### 验证结果
+
+- M2 专项：`13 passed`。
+- 旧共享三维/几何/MD2 兼容回归：`41 passed`。
+- 全量回归：`589 passed, 5 skipped, 1 warning`。
+- 5 个 skip 均为既有可选本地资源/旧派生产物条件：pose weight 或 real_3
+  observation、P3 shared cache、两项旧 shared-geometry smoke 产物，以及
+  未提交的 strict-v2 六视频 fixture。M2 专项无 skip。
+- warning 为本机 NVIDIA driver 与当前 PyTorch CUDA build 不匹配；CPU
+  路径可用，M2 smoke 不依赖新模型推理。
+- strict-v1：`e86466e19fe3e1663fa855fdf73843cf7ab8b5b6c8fa8771aa46172f6b726a6b`。
+- strict-v2：`3c55c8eb42e19d2447b00794085d8e6fa233c37a2071ef51f23b447d23ef268b`。
+- P4-C0 config：`8a4a8f5d6ac795646876042a84c9b0a4fdb1d06bec31045b734c3dfb64f8a304`。
+- P4-C1 config：`ec48e26da4f434a1356959997b546ac30dc9e439281b2e09174f7c86a35ce086`。
+- P4-C2 config：`fe8c3cda137337330209528f4025d0593fefa42886be89eb214bfd58d38a8d89`。
+- P4-C3A-M D2 synthetic：`ad3976d2ae31815d9bbd3da54ce9f0f39ccdcd8c9f5653260084fe89a417bc37`。
+
+### 当前限制
+
+- UniDepthV2 输出为模型估计米制深度，不是传感器真值。
+- 相机内参为 `model_predicted` 且暂无可校准置信度，不能等同 calibrated。
+- 实例 mask 只表示可见区域，不提供 amodal 轮廓。
+- 内部几何点仅在单帧通过纹理和深度质量筛选，尚未验证跨帧可跟踪性。
+- 当前没有相机位姿、世界坐标融合、语义关键点或 D3 时间残差。
+- smoke 只有 6 帧，不能建立方法有效性或真假性能结论。
+
+### 下一步计划
+
+- 进入 view observability 和 temporal size materialization 前，先沿现有
+  track 验证 geometric track points 的跨帧稳定性与 M1 预测内参漂移。
+- 后续单独引入可审计相机位姿后，才能把 camera-frame 点变换到 clip-local
+  或 world frame；在此之前不得执行或声称世界坐标融合。
+
+## 2026-07-24 - P4-C3B-M2 Git And Server Conversation Handoff
+
+### 目的
+
+在通过 Git 将项目迁移到无本对话历史的服务器前，把项目语义、冻结状态、
+非 Git 依赖、验证命令和下一阶段授权边界固化到仓库，避免新会话只看到源码
+文件名便误判实现状态、静默下载依赖、把缺失产物当成算法失败或越过用户授权
+直接进入训练和性能评价。
+
+### 新增文件
+
+- `AGENTS.md`：新编码代理自动读取的项目级长期约束和阶段事实。
+- `configs/handoff/p4c3b_m2_server_handoff_v1.yaml`：机器可读的阶段状态、
+  必需源码、冻结哈希、模型/视频注册表、非 Git 产物和继续阶段策略。
+- `docs/SERVER_HANDOFF_P4C3B_M2.md`：Git 与非 Git 文件边界、服务器环境、
+  UniDepth 固定 revision、数据/权重迁移、验收顺序和首条服务器提示词。
+- `docs/GIT_UPLOAD_CHECKLIST.md`：上传范围、检查命令和建议 commit summary。
+- `scripts/verify_p4c3b_server_handoff.py`：只读验证源码、冻结哈希、模型、
+  六视频和 M1/P4-B.5/M2 本地产物，分别输出 reproduction readiness。
+- `tests/test_p4c3b_server_handoff.py`：验证 handoff 完整性、冻结哈希、
+  非 Git 产物规则和六视频 smoke 资格。
+
+### 修改文件
+
+- `docs/SERVER_ENVIRONMENT.md`：补充 UniDepth 外部固定源码和 source-only
+  handoff 验证入口。
+- `docs/SERVER_DATA_SETUP.md`：补充 M1/P4-B.5 非 Git 产物迁移与
+  `blocked_by_input` 语义。
+- `scripts/bootstrap_p4_server.sh`：增加 M1/M2/handoff 专项测试和 source-only
+  验证，不自动下载 UniDepth 或运行模型。
+- `src/semantic3d/git_release/validation.py`：将 handoff、M1/M2 配置和
+  UniDepth registry 加入 Git release 必需路径。
+- `scripts/run_p4c3a_function_audit.py`、`src/semantic3d/function_audit.py`：
+  历史归档默认改为项目相对路径，并支持 `SEMANTIC3D_ARCHIVE_ROOT`。
+- `scripts/run_p4c3a_metric_primary_refactor.py`、
+  `src/semantic3d/method_completion/audit.py` 和
+  `src/semantic3d/method_completion/md2_audit.py`：移除 WSL `/mnt/e` 默认值，
+  支持 `SEMANTIC3D_STRICT_V2_RESULT` 显式指定历史 strict-v2 文件。
+- `docs/DEV_LOG.md`：追加本记录。
+
+### 删除文件
+
+- 无。
+
+### 主要变化
+
+- Git 继续排除 `.venv`、权重、六视频、外部 provider 源码和生成 outputs。
+- readiness 被拆分为 source、models、videos、M1、P4-B.5、M1 reproduction
+  和 M2 reproduction，避免“源码测试通过”等价于“真实输入齐全”。
+- 即使所有本地依赖均通过，`ready_for_next_stage` 仍固定为 false；必须收到
+  用户新的阶段提示词。
+- 服务器首条提示词要求先只读验收并等待，不得自动开始新算法阶段。
+- Git release 绝对路径审计不再被旧 `/mnt/e` 默认值阻断；历史归档仍可通过
+  命令行参数或环境变量显式提供。
+- 本机完整验证结果：source、3个YOLO权重、UniDepth权重/config、6个视频、
+  M1产物和P4-B.5产物均有效；M1/M2均可复现。
+- 当前非 Git 依赖约为：权重150MB、六视频16MB、M1产物137MB、
+  P4-B.5正式观测2.3GB、M2历史审计2.3MB。
+
+### 验证命令
+
+```bash
+.venv/bin/python -m pytest tests/test_p4c3b_server_handoff.py -q
+.venv/bin/python scripts/verify_p4c3b_server_handoff.py --source-only
+.venv/bin/python scripts/verify_p4c3b_server_handoff.py \
+  --require-models --require-videos --require-m2-inputs
+bash -n scripts/bootstrap_p4_server.sh
+.venv/bin/python -m pytest \
+  tests/test_p4c3b_metric_provider.py \
+  tests/test_p4c3b_metric_scene3d.py \
+  tests/test_p4c3b_server_handoff.py -q -rs
+.venv/bin/python -m pytest -q -rs
+```
+
+### 验证结果
+
+- handoff 专项：`4 passed`。
+- M1/M2/handoff 联合专项：`26 passed, 1 warning`。
+- 全量回归：`593 passed, 5 skipped, 1 warning`。
+- 5个skip与上一阶段一致，均为可选旧权重/缓存/派生产物，不涉及handoff。
+- warning仍为本机NVIDIA驱动与PyTorch CUDA build不匹配；CPU测试正常。
+- source-only和本机完整依赖验证均通过；未执行模型推理、下载、训练、
+  Git提交、tag或push。
+
+### 当前限制
+
+- Git checkout 不包含模型、视频、M1/P4-B.5/M2 outputs 或外部 UniDepth
+  源码；服务器必须单独转移或重建并校验。
+- UniDepth 完整安装依赖需要按服务器 GPU 驱动和 CUDA 版本重新审核，不能
+  复制 WSL `.venv`。
+- 当前 Git 工作区仍包含多个阶段的未提交变更，提交前必须人工审核
+  `git status` 中每个文件。
+
+### 下一步计划
+
+- 用户在 GitHub Desktop 审核并提交源码、配置、测试和文档，不提交被
+  `.gitignore` 排除的模型、视频与 outputs。
+- 服务器 checkout 固定 commit 后，先运行 source-only verifier 和专项测试，
+  再分渠道放置模型、视频和大型产物。
+- 只有新的用户阶段提示词到达后，才讨论 view observability 或 temporal
+  size materialization，不由代理自动开始。

@@ -1038,7 +1038,7 @@ def build_function_audit(
     output_dir: str | Path,
     *,
     dataset_root: str | Path | None = None,
-    archive_root: str | Path = "/mnt/e/fake_video_structural_anomaly_archive",
+    archive_root: str | Path | None = None,
 ) -> dict[str, Any]:
     """Build all P4-C3A-V audit artifacts without running learned providers."""
 
@@ -1049,7 +1049,11 @@ def build_function_audit(
     data_root = Path(dataset_root) if dataset_root is not None else root / "outputs/structural_enhancement_dataset/p4b5_six_video_full_observation"
     if not data_root.is_absolute():
         data_root = root / data_root
-    archive = Path(archive_root)
+    archive = (
+        Path(archive_root)
+        if archive_root is not None
+        else root / "outputs/archive"
+    )
     strict_project = root / "outputs/evaluation/rsd_strict_v2/per_pair_rsd_details.csv"
     strict_archive = archive / "outputs/evaluation/rsd_strict_v2/per_pair_rsd_details.csv"
     strict_rsd = strict_project if strict_project.exists() else strict_archive

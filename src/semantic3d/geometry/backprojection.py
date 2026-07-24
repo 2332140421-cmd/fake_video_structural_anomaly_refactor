@@ -15,6 +15,7 @@ def _invalid_point(
     reason: str,
     source_point_2d_id: Optional[str],
     metadata: Optional[dict[str, object]],
+    coordinate_frame: str,
 ) -> Point3DObservation:
     """Create an invalid camera point without zero-valued coordinates."""
 
@@ -23,7 +24,7 @@ def _invalid_point(
         x=None,
         y=None,
         z=None,
-        coordinate_frame="camera",
+        coordinate_frame=coordinate_frame,
         scale_status=GeometryScaleStatus.UNKNOWN,
         confidence=0.0,
         valid=False,
@@ -46,6 +47,7 @@ def backproject_pixel(
     valid: bool = True,
     missing_reason: str = "invalid_source_point",
     metadata: Optional[dict[str, object]] = None,
+    coordinate_frame: str = "camera",
 ) -> Point3DObservation:
     """Back-project one pixel using X=(u-cx)Z/fx and Y=(v-cy)Z/fy.
 
@@ -57,14 +59,24 @@ def backproject_pixel(
     matrix = validate_intrinsics(K)
     values = np.asarray([u, v, depth_z, confidence], dtype=float)
     if not valid:
-        return _invalid_point(point_id, missing_reason, source_point_2d_id, metadata)
+        return _invalid_point(
+            point_id, missing_reason, source_point_2d_id, metadata, coordinate_frame
+        )
     if not np.isfinite(values).all():
         return _invalid_point(
-            point_id, "non_finite_pixel_depth_or_confidence", source_point_2d_id, metadata
+            point_id,
+            "non_finite_pixel_depth_or_confidence",
+            source_point_2d_id,
+            metadata,
+            coordinate_frame,
         )
     if depth_z <= 0.0:
         return _invalid_point(
-            point_id, "non_positive_z_depth", source_point_2d_id, metadata
+            point_id,
+            "non_positive_z_depth",
+            source_point_2d_id,
+            metadata,
+            coordinate_frame,
         )
     if not 0.0 <= confidence <= 1.0:
         raise ValueError("confidence must be in [0, 1].")
@@ -84,7 +96,7 @@ def backproject_pixel(
         x=x,
         y=y,
         z=float(depth_z),
-        coordinate_frame="camera",
+        coordinate_frame=coordinate_frame,
         scale_status=scale_status,
         confidence=float(confidence),
         valid=True,
@@ -102,6 +114,7 @@ def backproject_points(
     confidences: Optional[np.ndarray] = None,
     point_ids: Optional[Sequence[str]] = None,
     scale_status: GeometryScaleStatus | str = GeometryScaleStatus.RELATIVE_3D,
+    coordinate_frame: str = "camera",
 ) -> tuple[Point3DObservation, ...]:
     """Back-project N pixels while preserving per-point validity and confidence."""
 
@@ -145,6 +158,7 @@ def backproject_points(
             source_point_2d_id=ids[index],
             valid=bool(mask[index]),
             missing_reason="masked_invalid_source_point",
+            coordinate_frame=coordinate_frame,
         )
         for index in range(count)
     )

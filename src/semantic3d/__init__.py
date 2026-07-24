@@ -96,6 +96,7 @@ __all__ = [
     "StrictPhysicalScalePriorResolver",
     "StrictResolvedPhysicalPrior",
     "CameraObservation",
+    "CoordinateFrame",
     "CoordinateConvention",
     "Object3DObservation",
     "Point2DObservation",
@@ -349,6 +350,7 @@ def __getattr__(name: str) -> object:
     if name in {
         "GeometryScaleStatus",
         "GeometryScaleUnit",
+        "CoordinateFrame",
         "Object3DObservation",
         "Point2DObservation",
         "Point3DObservation",

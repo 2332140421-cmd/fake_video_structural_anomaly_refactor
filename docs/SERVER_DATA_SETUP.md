@@ -24,3 +24,18 @@ Do not download or build formal data until P4-C2 reports
 `ready_for_formal_batch_build=true`, storage checks pass, and source lineage is
 verified. Provider failures must remain quality/missingness records and must not
 be converted into authenticity evidence.
+
+## P4-C3B Local-Only Artifacts
+
+Direct reproduction of the M2 smoke additionally needs:
+
+- `outputs/p4c3b_metric_provider_smoke/`;
+- `outputs/structural_enhancement_dataset/p4b5_six_video_full_observation/`.
+
+These directories are intentionally excluded from Git. Transfer them with an
+authorized file channel and validate their sentinel SHA-256 values, or rebuild
+them from registered videos, weights, and frozen configs. See
+`docs/SERVER_HANDOFF_P4C3B_M2.md`.
+
+Missing arrays must be reported as `blocked_by_input`; they are not an M2
+residual of zero and are not evidence that a provider or method is defective.

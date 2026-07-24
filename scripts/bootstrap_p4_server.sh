@@ -59,6 +59,15 @@ PREFLIGHT_ROOT="${OUTPUT_ROOT}/p4c3a_server_preflight"
   tests/test_p4c3a_batch_state.py \
   tests/test_p4c3a_migration_manifest.py
 
+"${VENV_DIR}/bin/python" -m pytest -q \
+  tests/test_p4c3b_metric_provider.py \
+  tests/test_p4c3b_metric_scene3d.py \
+  tests/test_p4c3b_server_handoff.py
+
+"${VENV_DIR}/bin/python" scripts/verify_p4c3b_server_handoff.py \
+  --source-only \
+  --output "${PREFLIGHT_ROOT}/p4c3b_handoff_source_report.json"
+
 "${VENV_DIR}/bin/python" scripts/verify_p4_git_checkout.py \
   --runtime-config "${RUNTIME_CONFIG}" \
   --tests-passed \
