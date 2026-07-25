@@ -4540,3 +4540,73 @@ GenVideo-100K 源、恢复当前有效配置所需的公共模型资产，并建
 - `GENVIDEO_OFFICIAL_SCHEMA_VERIFIED=NO`。
 - `REAL_DATA_DRY_RUN_READY=NO`。
 - `FORMAL_TRAINING_READY=NO`。
+
+## 2026-07-25 - P4-C3C-A3-B0.2 DeCoF Metadata Readiness
+
+### 官方 metadata、split 与许可
+
+- 固定 DeCoF 官方仓库 revision
+  `5f73e8dc4f8cd9faeed07d767c9517e3f2c66044`。仓库树没有 LICENSE 或
+  COPYING 文件，GitHub repository license 字段为 null；论文公开和 README
+  引用要求不能替代代码、生成视频、prompts/split 或真实源的数据许可。
+- `datas/prompts/data.json` 实际为 964 行 JSONL，`video_id` 唯一且非空；
+  source 为 MSVD=681、MSRVTT=283，后者 283 行有 `video_url`，前者没有
+  locator。
+- 官方 split 文件实际给出 train=771、validation=96、test=97。三集合
+  无交叉、无重复、无空 ID，合集与 964 个 prompt ID 完全一致；没有生成
+  随机 split。
+- metadata SHA-256 继续固定为：prompts
+  `d9552693cd83bc8fabd90703827272beea32634ca098282beaf082ef5098ddd7`、
+  train
+  `246bea61a97e78773e864ec9d58271831617696cac13c0d95401f367184d9b0e`、
+  validation
+  `f6ef4064377b12fc8e64a876c902ec10e79f8e6001fd703c47f9a6025ca678f1`
+  和 test
+  `0218c5c5831333483c6152204aff44e9e99295ea3c6ec6118d316f02485a4e49`。
+
+### Archive member 与真实源
+
+- 对 ModelScopeT2V、Show-1、Text2Video-Zero 和 ZeroScope 四个基础
+  generator ZIP，只读取各 22 字节 EOCD 和精确 central-directory Range；
+  共读取 282,732 字节 ZIP 目录 metadata，`media_payload_bytes=0`。
+- 四个 central directory 各有 964 个 MP4 member；每个 member stem 与
+  官方 `video_id` 完全一一对应。generator 使用冻结的
+  archive/member-prefix mapping，未知 archive、未知布局、重复或漏 join
+  均报错。
+- 生成 3,856 行显式 member index，其中 train=3,084、
+  validation=384、test=388；因此 metadata 层可以严格排除所有 test
+  member。Google Drive 未提供 archive SHA-256，不把 member CRC32 当作
+  archive checksum。
+- 对六个非 test MSRVTT locator 执行 metadata-only oEmbed 可定位性检查：
+  四个返回 200，一个返回 403，一个返回 404。681 个 MSVD 条目没有
+  locator，且原始源的许可、访问流程、失效媒体和 checksum 尚未解决；
+  real source recovery 继续 blocked。
+
+### Metadata-only adapter 与草案
+
+- 新增 DeCoF metadata-only adapter 和独立 registry。adapter 不访问网络、
+  不扫描或读取视频，原样保留 official split，以显式 mapping 关联
+  generator/member，并保留 real/fake pair lineage。
+- adapter 生成 4,820 条草案记录：real=964、fake=3,856；
+  train=3,855、validation=480、test=485。所有 `video_path`、`file_size`
+  和媒体 SHA-256 都保持 null，没有伪造 A1 formal sample。
+- 仓库外生成 formal manifest 草案、summary、member index、确定性小样本
+  计划和下载解锁清单。因为 DeCoF 数据许可和 real source recovery 未就绪，
+  binary 与 fake-only 计划都为空，train/validation/test 选择数均为 0。
+- B0.2、B0、A3 bridge、A2 与 A1 指定联合回归为 `103 passed`。
+- 本阶段媒体下载量为 0 字节；未运行模型、M1–M6、真实流水线或训练。
+
+### 当前状态
+
+- `DECOF_LICENSE_STATUS=BLOCKED`。
+- `DECOF_OFFICIAL_SPLIT_VERIFIED=YES`。
+- `DECOF_METADATA_SCHEMA_VERIFIED=YES`。
+- `DECOF_NON_TEST_MEMBER_INDEX_READY=YES`。
+- `DECOF_REAL_SOURCE_RECOVERY_READY=NO`。
+- `DECOF_METADATA_ADAPTER_READY=YES`。
+- `DECOF_TEST_EXCLUSION_ENFORCED=YES`。
+- `DECOF_BINARY_SAMPLE_PLAN_READY=NO`。
+- `DECOF_FAKE_ONLY_PLAN_READY=NO`。
+- `SMALL_SAMPLE_DOWNLOAD_READY=NO`。
+- `REAL_DATA_DRY_RUN_READY=NO`。
+- `FORMAL_TRAINING_READY=NO`。

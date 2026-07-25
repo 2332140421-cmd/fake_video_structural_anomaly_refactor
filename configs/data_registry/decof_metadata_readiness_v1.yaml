@@ -1,0 +1,243 @@
+schema_version: semantic3d_decof_metadata_readiness_v1
+audit_stage: P4-C3C-A3-B0.2
+dataset_id: decof
+dataset_name: DeCoF/GVF
+
+official_repository: https://github.com/LongMa-2025/DeCoF
+repository_revision: 5f73e8dc4f8cd9faeed07d767c9517e3f2c66044
+official_paper: https://arxiv.org/abs/2402.02085v8
+paper_revision: v8
+generated_video_host: https://drive.google.com/drive/folders/1X4Gw4hkWfka42IaBQ6ImkDTGAeA9Wlk4
+generated_video_host_revision: UNVERIFIED
+real_video_sources:
+  - dataset: MSVD
+    official_identity: Microsoft Research Video Description Corpus
+    prompt_records: 681
+    locator_field: NOT_AVAILABLE
+    id_mapping_status: PARTIAL
+    media_recovery_status: BLOCKED
+    license_status: UNVERIFIED
+    single_file_download_status: UNVERIFIED
+    research_use_status: UNVERIFIED
+  - dataset: MSRVTT
+    official_identity: MSR-VTT
+    official_source: https://www.microsoft.com/en-us/research/publication/msr-vtt-a-large-video-description-dataset-for-bridging-video-and-language/
+    prompt_records: 283
+    locator_field: video_url
+    locator_presence: 283
+    id_mapping_status: PARTIAL
+    media_recovery_status: PARTIAL
+    license_status: UNVERIFIED
+    single_file_download_status: PARTIAL
+    research_use_status: UNVERIFIED
+
+license:
+  overall_status: BLOCKED
+  code_license: NOT_AVAILABLE
+  code_license_evidence:
+    - no_LICENSE_or_COPYING_file_at_frozen_revision
+    - GitHub_repository_license_field_is_null
+  generated_video_data_license: NOT_AVAILABLE
+  prompts_and_split_license: NOT_AVAILABLE
+  real_source_license: UNVERIFIED
+  paper_license_is_not_dataset_license: true
+  citation_requirements:
+    status: VERIFIED
+    instruction: cite_the_DeCoF_paper_when_the_work_is_useful
+    citation_key: ma2024detecting
+  access_terms: NOT_AVAILABLE
+  download_approval_required_for_public_drive_archives: false
+  user_account_required_for_audited_range_requests: false
+
+metadata_files:
+  - relative_path: datas/prompts/data.json
+    file_size: 339623
+    sha256: d9552693cd83bc8fabd90703827272beea32634ca098282beaf082ef5098ddd7
+    format: JSONL_objects_despite_json_suffix
+    row_count: 964
+    column_names:
+      - attribute control
+      - major content
+      - prompt
+      - prompt complexity
+      - source
+      - video_id
+      - video_url
+    sample_id_field: video_id
+    split_field: split_file_membership
+    label_field: NOT_AVAILABLE
+    generator_field: NOT_AVAILABLE
+    source_field: source
+    prompt_field: prompt
+  - relative_path: datas/split/train.json
+    file_size: 12126
+    sha256: 246bea61a97e78773e864ec9d58271831617696cac13c0d95401f367184d9b0e
+    format: plain_text_video_id_per_line
+    row_count: 771
+    column_names: [video_id]
+    split_value: train
+  - relative_path: datas/split/val.json
+    file_size: 1558
+    sha256: f6ef4064377b12fc8e64a876c902ec10e79f8e6001fd703c47f9a6025ca678f1
+    format: plain_text_video_id_per_line
+    row_count: 96
+    column_names: [video_id]
+    split_value: validation
+  - relative_path: datas/split/test.json
+    file_size: 1547
+    sha256: 0218c5c5831333483c6152204aff44e9e99295ea3c6ec6118d316f02485a4e49
+    format: plain_text_video_id_per_line
+    row_count: 97
+    column_names: [video_id]
+    split_value: test
+
+official_split:
+  status: VERIFIED
+  source: official_repository_files
+  random_split_used: false
+  counts:
+    total: 964
+    train: 771
+    validation: 96
+    test: 97
+  duplicate_id_count: 0
+  empty_id_count: 0
+  train_validation_overlap: 0
+  train_test_overlap: 0
+  validation_test_overlap: 0
+  unassigned_id_count: 0
+  unknown_id_count: 0
+  test_exclusion_required: true
+
+relationship_audit:
+  paper_unit: one_real_video_one_prompt_and_a_set_of_generated_videos
+  real_and_fake_share_source_id: true
+  prompt_stably_joined_by_video_id: true
+  split_unit: source_video_id
+  split_leakage_detected: false
+  paired_relation_file_available: false
+  paired_relation_source: paper_relation_plus_verified_archive_member_join
+  generated_video_source_lineage_preserved: true
+  same_source_id_repeats_across_generators: true
+  row_generator_field_available: false
+  generator_mapping_status: LAYOUT_DEFINED_MAPPING
+  unknown_archive_policy: reject
+  unknown_member_layout_policy: reject
+
+archive_member_audit:
+  status: VERIFIED
+  scope: four_base_generator_archives
+  range_method: exact_ZIP_EOCD_and_central_directory_ranges
+  media_payload_bytes: 0
+  archive_checksum_status: NOT_AVAILABLE
+  strict_non_test_filter_available: true
+  expected_source_ids_per_indexed_archive: 964
+  indexed_archives:
+    - archive_name: ModelScopeT2V.zip
+      file_id: 1AW7PS2XY1SnUvHuLn-iKzjp_Jo1099b5
+      archive_size: 156994053
+      generator: ModelScopeT2V
+      member_prefix: ModelScopeT2V/
+      member_count: 964
+      eocd_range: bytes=156994031-156994052
+      eocd_received_bytes: 22
+      eocd_sha256: 3012e9573c1a719fc3e088cc29b015172ccbdc0ea6d96c4e61c771b156da7e1d
+      central_directory_range: bytes=156918068-156994030
+      central_directory_received_bytes: 75963
+      central_directory_sha256: 5fc0d4d479e16f246a0f2c91e30c5e74145aa0b68ef7b0650c61ccc3f1ff6c4b
+    - archive_name: Show1.zip
+      file_id: 1Kyfc-WqmNeaAhXdN1QouIJ9OvQC7rGYw
+      archive_size: 174415967
+      generator: Show-1
+      member_prefix: Show1/
+      member_count: 964
+      eocd_range: bytes=174415945-174415966
+      eocd_received_bytes: 22
+      eocd_sha256: d49ab942835fd7f6db0963a4335b8b6c565eb373676b195a0551fcb62c72f55d
+      central_directory_range: bytes=174347694-174415944
+      central_directory_received_bytes: 68251
+      central_directory_sha256: 424d0f3cdc0de01240f3eab25331a5c69f7e4a61ac7de8b053f12483ebd3ec48
+    - archive_name: T2V.zip
+      file_id: 1Es1oRGZH_x3mTm7LnwjNSAN_X-KRW951
+      archive_size: 1052443172
+      generator: Text2Video-Zero
+      member_prefix: T2V/
+      member_count: 964
+      eocd_range: bytes=1052443150-1052443171
+      eocd_received_bytes: 22
+      eocd_sha256: afd6c7d9f28ff403bf91eab209d5496a8507a05889b4f268723930583a875493
+      central_directory_range: bytes=1052376827-1052443149
+      central_directory_received_bytes: 66323
+      central_directory_sha256: eae307ad676b87c3c9ceb012e02b158b53f049a3131c2c539f35fcfe772918ef
+    - archive_name: zeroscope.zip
+      file_id: 1pqLVonguVN1fwTJn9_CzLKog98eQPQ2e
+      archive_size: 502072110
+      generator: ZeroScope
+      member_prefix: zeroscope/
+      member_count: 964
+      eocd_range: bytes=502072088-502072109
+      eocd_received_bytes: 22
+      eocd_sha256: 7b0e909fca5b744c61ef3de610d68d24e0b468dd3b515c69b8e23b776f6acbba
+      central_directory_range: bytes=501999981-502072087
+      central_directory_received_bytes: 72107
+      central_directory_sha256: 3c26d2867c2ae2ad221abc5156c6bbc9162760f129588c68772bfaf00ec862bb
+  unindexed_archives:
+    - {archive_name: GEN2.zip, archive_size: 888631514}
+    - {archive_name: keling.zip, archive_size: 375037480}
+    - {archive_name: pika.zip, archive_size: 57503339}
+    - {archive_name: sora.zip, archive_size: 1214366069}
+    - {archive_name: veo.zip, archive_size: 65144465}
+
+real_source_probe:
+  method: official_DeCoF_video_url_plus_YouTube_oEmbed_metadata_only
+  media_payload_bytes: 0
+  non_test_samples:
+    - {sample_id: video7021, split: train, http_status: 200}
+    - {sample_id: video7023, split: train, http_status: 200}
+    - {sample_id: video7038, split: train, http_status: 403}
+    - {sample_id: video7053, split: validation, http_status: 404}
+    - {sample_id: video7099, split: validation, http_status: 200}
+    - {sample_id: video7337, split: validation, http_status: 200}
+  recovery_status: BLOCKED
+  blocking_items:
+    - 681_MSVD_records_have_no_locator
+    - sampled_MSRVTT_link_availability_is_not_complete
+    - original_source_license_and_access_terms_are_unverified
+    - source_media_checksums_are_unavailable
+
+formal_schema_mapping:
+  sample_id: derived_stable_id_from_source_id_role_and_explicit_generator
+  source_id: video_id
+  split: official_split_file_membership
+  label: derived_only_from_official_real_or_generated_pair_role
+  is_real: derived_from_official_pair_role
+  generator: explicit_archive_layout_mapping_for_generated_records
+  prompt: prompt
+  source_dataset: constant_decof
+  source_lineage: source_video_id_video_url_and_pair_relation
+  video_member: explicit_central_directory_member_mapping
+  video_path: null_until_downloaded
+  temporal_annotation: null_UNRESOLVED_SCHEMA
+  spatial_annotation: null_UNRESOLVED_SCHEMA
+  metadata_status: explicit_per_field_missingness
+
+adapter_module: semantic3d.dataset_adapters.decof
+adapter_status: metadata_only
+metadata_adapter_ready: true
+media_resolution_ready: false
+data_downloaded: false
+official_schema_verified: false
+production_adapter_ready: false
+test_exclusion_enforced: true
+binary_small_sample_plan_ready: false
+fake_only_engineering_smoke_plan_ready: false
+small_sample_download_ready: false
+allowed_use: metadata_audit_and_adapter_source_tests_only
+media_download_bytes: 0
+blocking_items:
+  - generated_video_data_license_not_declared
+  - prompts_and_split_license_not_declared
+  - real_source_license_and_access_terms_unverified
+  - MSVD_media_locator_missing
+  - sampled_MSRVTT_media_availability_incomplete
+  - archive_SHA256_not_published
