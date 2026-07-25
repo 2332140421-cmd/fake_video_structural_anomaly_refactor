@@ -11,7 +11,13 @@ import numpy as np
 
 from data.observations import build_shared_observations
 from data.schemas import ClipObservation, VideoResult
-from data.video import read_video, split_clips
+from data.video import (
+    SAMPLER_VERSION,
+    read_uniform_video_sample,
+    read_video,
+    split_clips,
+    split_uniform_sample,
+)
 from models.fusion import fuse_clip_residuals, fuse_video_results
 from models.geometry import predict_target_positions
 from models.motion_residuals import compute_motion_residuals
@@ -40,14 +46,36 @@ class ForgeryAnalysisPipeline:
         self.track_provider = track_provider
         self.last_observations: list[ClipObservation] = []
 
+    def reset_video_state(self) -> None:
+        """Clear video-local adapter and output state while retaining model weights."""
+
+        self.last_observations = []
+        pair_metadata = getattr(self.pose_provider, "pair_metadata", None)
+        if isinstance(pair_metadata, dict):
+            pair_metadata.clear()
+        for provider in (
+            self.object_provider,
+            self.depth_provider,
+            self.pose_provider,
+            self.track_provider,
+        ):
+            reset = getattr(provider, "reset_video_state", None)
+            if callable(reset):
+                reset()
+
     def analyze_video(
         self,
         video_path: str | Path,
         *,
         max_frames: int | None = None,
         max_clips: int | None = None,
+        sampling_mode: str | None = None,
+        sampled_frames: int = 32,
+        clip_length: int | None = None,
+        clip_count: int | None = None,
     ) -> VideoResult:
         started = time.perf_counter()
+        self.reset_video_state()
         torch = None
         try:
             import torch as torch_module
@@ -60,17 +88,55 @@ class ForgeryAnalysisPipeline:
         video = self.config["video"]
         resize = video.get("resize")
         resize_tuple = None if resize is None else tuple(int(value) for value in resize)
-        metadata, frames = read_video(
-            video_path,
-            resize=resize_tuple,
-            max_frames=max_frames,
-        )
-        clips = split_clips(
-            metadata,
-            frames,
-            clip_length=int(video["clip_length"]),
-            clip_stride=int(video["clip_stride"]),
-        )
+        if sampling_mode is None:
+            metadata, frames = read_video(
+                video_path,
+                resize=resize_tuple,
+                max_frames=max_frames,
+            )
+            clips = split_clips(
+                metadata,
+                frames,
+                clip_length=int(video["clip_length"]),
+                clip_stride=int(video["clip_stride"]),
+            )
+            selected_frame_indices = tuple(range(len(frames)))
+            selected_timestamps = tuple(index / metadata.fps for index in range(len(frames)))
+            effective_sampling_mode = "sequential_decode"
+            sampler_version = "legacy_sequential_v1"
+        elif sampling_mode == "uniform_full_video":
+            if max_frames is not None or max_clips is not None:
+                raise ValueError(
+                    "max_frames/max_clips cannot be combined with uniform_full_video."
+                )
+            effective_clip_length = int(
+                video["clip_length"] if clip_length is None else clip_length
+            )
+            effective_clip_count = int(
+                sampled_frames // effective_clip_length
+                if clip_count is None
+                else clip_count
+            )
+            if effective_clip_length * effective_clip_count != int(sampled_frames):
+                raise ValueError("sampled_frames must equal clip_length * clip_count.")
+            sample = read_uniform_video_sample(
+                video_path,
+                requested_frame_count=int(sampled_frames),
+                resize=resize_tuple,
+            )
+            metadata = sample.metadata
+            frames = list(sample.frames)
+            clips = split_uniform_sample(
+                sample,
+                clip_length=effective_clip_length,
+                clip_count=effective_clip_count,
+            )
+            selected_frame_indices = sample.frame_indices
+            selected_timestamps = sample.timestamps
+            effective_sampling_mode = sampling_mode
+            sampler_version = SAMPLER_VERSION
+        else:
+            raise ValueError(f"Unsupported sampling_mode: {sampling_mode!r}.")
         if max_clips is not None:
             if max_clips < 1:
                 raise ValueError("max_clips must be positive when supplied.")
@@ -100,6 +166,14 @@ class ForgeryAnalysisPipeline:
                 "runtime_seconds": time.perf_counter() - started,
                 "peak_gpu_memory_mb": float(peak_memory),
                 "failure_reason": "",
+                "sampling_mode": effective_sampling_mode,
+                "sampler_version": sampler_version,
+                "source_frame_count": int(metadata.frame_count),
+                "source_duration_seconds": float(metadata.duration_seconds),
+                "source_fps": float(metadata.fps),
+                "selected_frame_count": len(selected_frame_indices),
+                "selected_frame_indices": list(selected_frame_indices),
+                "selected_timestamps": list(selected_timestamps),
             }
         )
         return result
