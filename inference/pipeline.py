@@ -194,27 +194,6 @@ class ForgeryAnalysisPipeline:
             for obj in frame.objects
             if has_valid_metric_depth(frame, obj)
         ]
-        observable_dimensions = {"height": 0, "width": 0, "length": 0}
-        for frame, obj in valid_objects:
-            prior = priors.get(obj.category)
-            if (
-                prior is None
-                or obj.truncated
-                or obj.occlusion_ratio > max_occlusion_ratio
-                or obj.mask_quality < min_mask_quality
-                or not obj.track_identity_stable
-            ):
-                continue
-            requirement = prior.orientation_requirement
-            if (
-                requirement
-                and "unknown" not in requirement
-                and obj.viewpoint not in requirement.split("_or_")
-            ):
-                continue
-            if prior.dimension in observable_dimensions:
-                observable_dimensions[prior.dimension] += 1
-
         semantic_prior = available({"semantic_metric_prior"})
         semantic_temporal = available({"semantic_metric_temporal"})
         d1 = available(
@@ -230,14 +209,44 @@ class ForgeryAnalysisPipeline:
         )
         d3 = available({"relation", "occlusion", "reappearance"})
         semantic_rows = [row for row in residuals if row.name == "semantic_metric_prior"]
+        semantic_dimensions = [
+            tuple(row.metadata.get("dimension_observability", ()))
+            for row in semantic_rows
+        ]
+        observable_dimensions = {
+            dimension: sum(
+                any(
+                    record.get("dimension") == dimension
+                    and bool(record.get("observable", False))
+                    for record in records
+                )
+                for records in semantic_dimensions
+            )
+            for dimension in ("height", "width", "length")
+        }
+        objects_with_dimension_axis = sum(
+            any(bool(record.get("axis_source")) for record in records)
+            for records in semantic_dimensions
+        )
+        objects_with_viewpoint_evidence = sum(
+            any(bool(record.get("viewpoint_evidence", False)) for record in records)
+            for records in semantic_dimensions
+        )
+        objects_with_any_observable_dimension = sum(
+            any(bool(record.get("observable", False)) for record in records)
+            for records in semantic_dimensions
+        )
         unavailable_reason_map = {
             "missing_category_metric_prior": "NO_SCALE_PRIOR",
-            "instance_mask_unavailable": "MASK_UNRELIABLE",
+            "instance_mask_unavailable": "NO_INSTANCE_MASK",
             "severe_object_truncation": "TRUNCATED",
+            "dimension_truncated": "TRUNCATED",
             "severe_object_occlusion": "OCCLUDED",
-            "insufficient_mask_quality": "MASK_UNRELIABLE",
             "unstable_track_identity": "TRACK_UNSTABLE",
             "dimension_not_observable_from_current_view": "VIEWPOINT_UNAVAILABLE",
+            "viewpoint_unavailable": "VIEWPOINT_UNAVAILABLE",
+            "no_reliable_dimension_axis": "NO_RELIABLE_DIMENSION_AXIS",
+            "dimension_not_observable": "DIMENSION_NOT_OBSERVABLE",
             "metric_object_surface_unavailable": "INVALID_METRIC_DEPTH",
             "insufficient_valid_metric_depth_ratio": "INSUFFICIENT_DEPTH_COVERAGE",
         }
@@ -245,14 +254,15 @@ class ForgeryAnalysisPipeline:
             name: 0
             for name in (
                 "NO_SCALE_PRIOR",
+                "NO_INSTANCE_MASK",
                 "INVALID_METRIC_DEPTH",
                 "INSUFFICIENT_DEPTH_COVERAGE",
-                "MASK_UNRELIABLE",
                 "TRUNCATED",
                 "OCCLUDED",
+                "NO_RELIABLE_DIMENSION_AXIS",
                 "VIEWPOINT_UNAVAILABLE",
                 "DIMENSION_NOT_OBSERVABLE",
-                "POINT_CLOUD_OUTLIER",
+                "TRACK_TOO_SHORT",
                 "TRACK_UNSTABLE",
                 "OTHER",
             )
@@ -260,12 +270,30 @@ class ForgeryAnalysisPipeline:
         for row in semantic_rows:
             if not row.valid_mask:
                 unavailable_reasons[unavailable_reason_map.get(row.reason, "OTHER")] += 1
+        unavailable_reasons["TRACK_TOO_SHORT"] += sum(
+            row.name == "semantic_metric_temporal"
+            and not row.valid_mask
+            and row.reason == "insufficient_same_track_metric_history"
+            for row in residuals
+        )
 
-        valid_frames_by_track: dict[str, set[int]] = {}
+        valid_frames_by_track: dict[tuple[str, str], set[int]] = {}
         for frame, obj in valid_objects:
-            valid_frames_by_track.setdefault(obj.track_id, set()).add(frame.frame_index)
+            valid_frames_by_track.setdefault(
+                (frame.clip_id, obj.track_id), set()
+            ).add(frame.frame_index)
         tracks_with_multiple_valid_frames = sum(
             len(indices) > 1 for indices in valid_frames_by_track.values()
+        )
+        tracks_with_semantic_temporal_residual = len(
+            {
+                (
+                    str(row.spatial_support.get("clip_id")),
+                    str(row.spatial_support.get("track_id")),
+                )
+                for row in residuals
+                if row.name == "semantic_metric_temporal" and row.valid_mask
+            }
         )
         visibility_states = {
             name: 0
@@ -384,12 +412,8 @@ class ForgeryAnalysisPipeline:
                 ),
                 "objects_with_observable_dimension": semantic_prior,
                 "objects_with_semantic_prior_residual": semantic_prior,
-                "tracks_with_semantic_temporal_residual": len(
-                    {
-                        str(row.spatial_support.get("track_id"))
-                        for row in residuals
-                        if row.name == "semantic_metric_temporal" and row.valid_mask
-                    }
+                "tracks_with_semantic_temporal_residual": (
+                    tracks_with_semantic_temporal_residual
                 ),
                 "authenticity_label_used": False,
                 "m6_to_a2_bridge_called": False,
@@ -407,23 +431,24 @@ class ForgeryAnalysisPipeline:
                     "objects_not_severely_occluded": sum(
                         obj.occlusion_ratio <= max_occlusion_ratio for obj in objects
                     ),
+                    "objects_with_dimension_axis": objects_with_dimension_axis,
+                    "objects_with_viewpoint_evidence": objects_with_viewpoint_evidence,
                     "objects_with_viewpoint_estimate": sum(
                         obj.viewpoint != "unknown" for obj in objects
                     ),
+                    "observable_height": observable_dimensions["height"],
+                    "observable_width": observable_dimensions["width"],
+                    "observable_length": observable_dimensions["length"],
                     "objects_with_observable_height": observable_dimensions["height"],
                     "objects_with_observable_width": observable_dimensions["width"],
                     "objects_with_observable_length": observable_dimensions["length"],
-                    "objects_with_any_observable_dimension": sum(
-                        observable_dimensions.values()
+                    "objects_with_any_observable_dimension": (
+                        objects_with_any_observable_dimension
                     ),
                     "objects_with_semantic_prior_residual": semantic_prior,
                     "tracks_with_multiple_valid_frames": tracks_with_multiple_valid_frames,
-                    "tracks_with_semantic_temporal_residual": len(
-                        {
-                            str(row.spatial_support.get("track_id"))
-                            for row in residuals
-                            if row.name == "semantic_metric_temporal" and row.valid_mask
-                        }
+                    "tracks_with_semantic_temporal_residual": (
+                        tracks_with_semantic_temporal_residual
                     ),
                 },
                 "object_semantic_unavailable_reasons": unavailable_reasons,

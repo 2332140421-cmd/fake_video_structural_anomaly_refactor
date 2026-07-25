@@ -15,8 +15,8 @@ class ObjectProvider:
     def predict(self, frame, frame_index):
         self.calls += 1
         mask = np.zeros(frame.shape[:2], dtype=bool)
-        mask[8:24, 8:24] = True
-        return [ObjectObservation("object", "track", "box", (8, 8, 24, 24), 1.0, instance_mask=mask)]
+        mask[6:26, 14:18] = True
+        return [ObjectObservation("object", "track", "cup", (14, 6, 18, 26), 1.0, instance_mask=mask)]
 
 
 class DepthProvider:
@@ -54,9 +54,9 @@ class TrackProvider:
 def test_synthetic_shared_observation_to_outputs(tmp_path):
     prior = tmp_path / "priors.yaml"
     prior.write_text(
-        "metric_scale_priors:\n- category: box\n  dimension: width\n"
+        "metric_scale_priors:\n- category: cup\n  dimension: height\n"
         "  min_meters: 1.0\n  max_meters: 2.0\n"
-        "  orientation_requirement: unknown\n  minimum_observability: 0.5\n"
+        "  orientation_requirement: upright\n  minimum_observability: 0.5\n"
         "  source_note: synthetic\n",
         encoding="utf-8",
     )
@@ -96,6 +96,13 @@ def test_synthetic_shared_observation_to_outputs(tmp_path):
     assert result.metadata["m6_to_a2_bridge_called"] is False
     assert result.metadata["object_semantic_funnel"]["objects_total"] == 3
     assert result.metadata["object_semantic_funnel"]["objects_with_instance_mask"] == 3
+    assert result.metadata["object_semantic_funnel"]["objects_with_dimension_axis"] == 3
+    assert result.metadata["object_semantic_funnel"]["objects_with_viewpoint_evidence"] == 3
+    assert result.metadata["object_semantic_funnel"]["observable_height"] == 3
+    assert result.metadata["object_semantic_funnel"]["observable_width"] == 0
+    assert result.metadata["object_semantic_funnel"]["observable_length"] == 0
+    assert result.metadata["object_semantic_funnel"]["objects_with_any_observable_dimension"] == 3
+    assert result.metadata["object_semantic_funnel"]["objects_with_semantic_prior_residual"] == 3
     assert result.metadata["branch_evidence_counts"]["semantic_prior"]["total"] == 3
     assert sum(result.metadata["visibility_state_counts"].values()) == 0
     assert result.metadata["point_track_diagnostics"]["index_alignment_ok"] is True
