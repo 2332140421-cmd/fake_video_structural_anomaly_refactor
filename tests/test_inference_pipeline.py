@@ -94,6 +94,12 @@ def test_synthetic_shared_observation_to_outputs(tmp_path):
     assert result.metadata["historical_csv_read"] is False
     assert result.metadata["authenticity_label_used"] is False
     assert result.metadata["m6_to_a2_bridge_called"] is False
+    assert result.metadata["object_semantic_funnel"]["objects_total"] == 3
+    assert result.metadata["object_semantic_funnel"]["objects_with_instance_mask"] == 3
+    assert result.metadata["branch_evidence_counts"]["semantic_prior"]["total"] == 3
+    assert sum(result.metadata["visibility_state_counts"].values()) == 0
+    assert result.metadata["point_track_diagnostics"]["index_alignment_ok"] is True
+    assert result.metadata["point_track_diagnostics"]["track_ids_unique"] is True
     paths = save_analysis_outputs(result, [observation], tmp_path / "outputs", heatmap_sigma=1.0)
     required = {
         "result", "timeline", "clip_scores", "object_scores", "track_scores",

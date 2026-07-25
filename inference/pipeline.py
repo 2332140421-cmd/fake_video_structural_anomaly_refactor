@@ -15,7 +15,7 @@ from data.video import read_video, split_clips
 from models.fusion import fuse_clip_residuals, fuse_video_results
 from models.geometry import predict_target_positions
 from models.motion_residuals import compute_motion_residuals
-from models.object_semantic import compute_object_semantic_residuals
+from models.object_semantic import compute_object_semantic_residuals, load_metric_priors
 from models.providers import DepthIntrinsicsProvider, ObjectProvider, PoseProvider, TrackProvider
 from models.relation_residuals import compute_relation_residuals
 from models.reprojection_residuals import compute_reprojection_residuals
@@ -170,6 +170,51 @@ class ForgeryAnalysisPipeline:
             return sum(row.valid_mask and row.name in names for row in residuals)
 
         objects = [obj for frame in frames for obj in frame.objects]
+        priors = load_metric_priors(self.config["object_semantic"]["prior_path"])
+        min_mask_quality = float(
+            self.config["object_semantic"].get("min_mask_quality", 0.3)
+        )
+        max_occlusion_ratio = float(
+            self.config["object_semantic"].get("max_occlusion_ratio", 0.5)
+        )
+
+        def has_valid_metric_depth(frame, obj) -> bool:
+            if obj.instance_mask is None or frame.metric_depth is None:
+                return False
+            valid = (
+                np.isfinite(frame.metric_depth)
+                if frame.depth_valid_mask is None
+                else frame.depth_valid_mask
+            )
+            return bool(np.any(obj.instance_mask & valid))
+
+        valid_objects = [
+            (frame, obj)
+            for frame in frames
+            for obj in frame.objects
+            if has_valid_metric_depth(frame, obj)
+        ]
+        observable_dimensions = {"height": 0, "width": 0, "length": 0}
+        for frame, obj in valid_objects:
+            prior = priors.get(obj.category)
+            if (
+                prior is None
+                or obj.truncated
+                or obj.occlusion_ratio > max_occlusion_ratio
+                or obj.mask_quality < min_mask_quality
+                or not obj.track_identity_stable
+            ):
+                continue
+            requirement = prior.orientation_requirement
+            if (
+                requirement
+                and "unknown" not in requirement
+                and obj.viewpoint not in requirement.split("_or_")
+            ):
+                continue
+            if prior.dimension in observable_dimensions:
+                observable_dimensions[prior.dimension] += 1
+
         semantic_prior = available({"semantic_metric_prior"})
         semantic_temporal = available({"semantic_metric_temporal"})
         d1 = available(
@@ -184,6 +229,109 @@ class ForgeryAnalysisPipeline:
             {"point_reprojection", "depth_reprojection", "boundary_reprojection"}
         )
         d3 = available({"relation", "occlusion", "reappearance"})
+        semantic_rows = [row for row in residuals if row.name == "semantic_metric_prior"]
+        unavailable_reason_map = {
+            "missing_category_metric_prior": "NO_SCALE_PRIOR",
+            "instance_mask_unavailable": "MASK_UNRELIABLE",
+            "severe_object_truncation": "TRUNCATED",
+            "severe_object_occlusion": "OCCLUDED",
+            "insufficient_mask_quality": "MASK_UNRELIABLE",
+            "unstable_track_identity": "TRACK_UNSTABLE",
+            "dimension_not_observable_from_current_view": "VIEWPOINT_UNAVAILABLE",
+            "metric_object_surface_unavailable": "INVALID_METRIC_DEPTH",
+            "insufficient_valid_metric_depth_ratio": "INSUFFICIENT_DEPTH_COVERAGE",
+        }
+        unavailable_reasons = {
+            name: 0
+            for name in (
+                "NO_SCALE_PRIOR",
+                "INVALID_METRIC_DEPTH",
+                "INSUFFICIENT_DEPTH_COVERAGE",
+                "MASK_UNRELIABLE",
+                "TRUNCATED",
+                "OCCLUDED",
+                "VIEWPOINT_UNAVAILABLE",
+                "DIMENSION_NOT_OBSERVABLE",
+                "POINT_CLOUD_OUTLIER",
+                "TRACK_UNSTABLE",
+                "OTHER",
+            )
+        }
+        for row in semantic_rows:
+            if not row.valid_mask:
+                unavailable_reasons[unavailable_reason_map.get(row.reason, "OTHER")] += 1
+
+        valid_frames_by_track: dict[str, set[int]] = {}
+        for frame, obj in valid_objects:
+            valid_frames_by_track.setdefault(obj.track_id, set()).add(frame.frame_index)
+        tracks_with_multiple_valid_frames = sum(
+            len(indices) > 1 for indices in valid_frames_by_track.values()
+        )
+        visibility_states = {
+            name: 0
+            for name in (
+                "VISIBLE",
+                "PARTIALLY_OCCLUDED",
+                "FULLY_OCCLUDED",
+                "REAPPEARED",
+                "TRUNCATED",
+                "MISSING_UNEXPLAINED",
+                "UNAVAILABLE",
+            )
+        }
+        visibility_mapping = {
+            "fully_visible": "VISIBLE",
+            "partially_occluded": "PARTIALLY_OCCLUDED",
+            "fully_occluded": "FULLY_OCCLUDED",
+            "reappeared": "REAPPEARED",
+            "out_of_frame": "TRUNCATED",
+            "detector_missing": "MISSING_UNEXPLAINED",
+        }
+        for frame in frames:
+            for observation in frame.visibility_observations.values():
+                state = getattr(observation.current_state, "value", observation.current_state)
+                visibility_states[visibility_mapping.get(str(state), "UNAVAILABLE")] += 1
+
+        branch_names = {
+            "semantic_prior": {"semantic_metric_prior"},
+            "semantic_temporal": {"semantic_metric_temporal"},
+            "d1": {
+                "dynamic_reprojection",
+                "track_3d_continuity",
+                "direction_consistency",
+                "relative_velocity",
+            },
+            "d2": {
+                "point_reprojection",
+                "depth_reprojection",
+                "boundary_reprojection",
+            },
+            "d3": {"relation", "occlusion", "reappearance"},
+        }
+        branch_counts = {
+            branch: {
+                "total": sum(row.name in names for row in residuals),
+                "available": sum(row.name in names and row.valid_mask for row in residuals),
+            }
+            for branch, names in branch_names.items()
+        }
+        point_tracks = [track for clip in observations for track in clip.tracks]
+        point_support_counts = {
+            name: sum(track.metadata.get("support_type") == name for track in point_tracks)
+            for name in ("OBJECT", "BOUNDARY", "BACKGROUND", "KEYPOINT")
+        }
+        point_support_counts["OTHER"] = len(point_tracks) - sum(
+            point_support_counts.values()
+        )
+        point_track_index_alignment_ok = all(
+            track.actual_xy.shape == (len(track.frame_indices), 2)
+            and track.valid_mask.shape == (len(track.frame_indices),)
+            and (
+                track.predicted_xy is None
+                or track.predicted_xy.shape == track.actual_xy.shape
+            )
+            for track in point_tracks
+        )
         result.metadata.update(
             {
                 "analyzed_frames": len({frame.frame_index for frame in frames}),
@@ -226,20 +374,8 @@ class ForgeryAnalysisPipeline:
                 ),
                 "objects_total": len(objects),
                 "objects_with_metric_depth": sum(
-                    obj.instance_mask is not None
-                    and frame.metric_depth is not None
-                    and bool(
-                        np.any(
-                            obj.instance_mask
-                            & (
-                                np.isfinite(frame.metric_depth)
-                                if frame.depth_valid_mask is None
-                                else frame.depth_valid_mask
-                            )
-                        )
-                    )
-                    for frame in frames
-                    for obj in frame.objects
+                    has_valid_metric_depth(frame, obj)
+                    for frame in frames for obj in frame.objects
                 ),
                 "objects_with_scale_prior": sum(
                     row.name == "semantic_metric_prior"
@@ -258,6 +394,55 @@ class ForgeryAnalysisPipeline:
                 "authenticity_label_used": False,
                 "m6_to_a2_bridge_called": False,
                 "real_analysis_reads_historical_csv": False,
+                "branch_evidence_counts": branch_counts,
+                "object_semantic_funnel": {
+                    "objects_total": len(objects),
+                    "objects_with_instance_mask": sum(
+                        obj.instance_mask is not None and bool(np.any(obj.instance_mask))
+                        for obj in objects
+                    ),
+                    "objects_with_valid_metric_depth": len(valid_objects),
+                    "objects_with_scale_prior": sum(obj.category in priors for obj in objects),
+                    "objects_not_severely_truncated": sum(not obj.truncated for obj in objects),
+                    "objects_not_severely_occluded": sum(
+                        obj.occlusion_ratio <= max_occlusion_ratio for obj in objects
+                    ),
+                    "objects_with_viewpoint_estimate": sum(
+                        obj.viewpoint != "unknown" for obj in objects
+                    ),
+                    "objects_with_observable_height": observable_dimensions["height"],
+                    "objects_with_observable_width": observable_dimensions["width"],
+                    "objects_with_observable_length": observable_dimensions["length"],
+                    "objects_with_any_observable_dimension": sum(
+                        observable_dimensions.values()
+                    ),
+                    "objects_with_semantic_prior_residual": semantic_prior,
+                    "tracks_with_multiple_valid_frames": tracks_with_multiple_valid_frames,
+                    "tracks_with_semantic_temporal_residual": len(
+                        {
+                            str(row.spatial_support.get("track_id"))
+                            for row in residuals
+                            if row.name == "semantic_metric_temporal" and row.valid_mask
+                        }
+                    ),
+                },
+                "object_semantic_unavailable_reasons": unavailable_reasons,
+                "visibility_state_counts": visibility_states,
+                "d3_event_summary": {
+                    "observable_relation_events": available({"relation"}),
+                    "observable_occlusion_events": available({"occlusion"}),
+                    "observable_reappearance_events": available({"reappearance"}),
+                    "d3_residual_available": bool(d3),
+                },
+                "point_track_diagnostics": {
+                    "support_counts": point_support_counts,
+                    "track_ids_unique": len({track.track_id for track in point_tracks})
+                    == len(point_tracks),
+                    "index_alignment_ok": point_track_index_alignment_ok,
+                    "invalid_point_samples": sum(
+                        int(np.count_nonzero(~track.valid_mask)) for track in point_tracks
+                    ),
+                },
             }
         )
         if not math.isfinite(result.risk_score):
