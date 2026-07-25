@@ -1,0 +1,101 @@
+from pathlib import Path
+
+import numpy as np
+
+from data.observations import build_shared_observations
+from data.schemas import ObjectObservation, TrackObservation, VideoClip
+from inference.outputs import save_analysis_outputs
+from inference.pipeline import ForgeryAnalysisPipeline
+
+
+class ObjectProvider:
+    def __init__(self):
+        self.calls = 0
+
+    def predict(self, frame, frame_index):
+        self.calls += 1
+        mask = np.zeros(frame.shape[:2], dtype=bool)
+        mask[8:24, 8:24] = True
+        return [ObjectObservation("object", "track", "box", (8, 8, 24, 24), 1.0, instance_mask=mask)]
+
+
+class DepthProvider:
+    def __init__(self):
+        self.calls = 0
+
+    def predict(self, frame, frame_index):
+        self.calls += 1
+        shape = frame.shape[:2]
+        intrinsics = np.array([[20.0, 0.0, 16.0], [0.0, 20.0, 16.0], [0.0, 0.0, 1.0]])
+        return np.full(shape, 2.0), np.ones(shape, dtype=bool), None, intrinsics, 1.0
+
+
+class PoseProvider:
+    def __init__(self):
+        self.calls = 0
+
+    def estimate(self, *args):
+        self.calls += 1
+        return np.eye(4), 1.0, "estimated_valid"
+
+
+class TrackProvider:
+    def track(self, clip, objects_by_frame):
+        points = np.array([[0.0, 0.0, 2.0], [0.1, 0.0, 2.0], [0.2, 0.0, 2.0]])
+        return [
+            TrackObservation(
+                "point_track", "object", clip.frame_indices,
+                np.array([[16.0, 16.0], [17.0, 16.0], [18.0, 16.0]]),
+                points_3d=points,
+            )
+        ]
+
+
+def test_synthetic_shared_observation_to_outputs(tmp_path):
+    prior = tmp_path / "priors.yaml"
+    prior.write_text(
+        "metric_scale_priors:\n- category: box\n  dimension: width\n"
+        "  min_meters: 1.0\n  max_meters: 2.0\n"
+        "  orientation_requirement: unknown\n  minimum_observability: 0.5\n"
+        "  source_note: synthetic\n",
+        encoding="utf-8",
+    )
+    frames = tuple(np.zeros((32, 32, 3), dtype=np.uint8) for _ in range(3))
+    video_clip = VideoClip("clip", "video", (0, 1, 2), (0.0, 0.1, 0.2), frames)
+    objects, depth, pose = ObjectProvider(), DepthProvider(), PoseProvider()
+    observation = build_shared_observations(
+        video_clip,
+        object_provider=objects,
+        depth_provider=depth,
+        pose_provider=pose,
+        track_provider=TrackProvider(),
+    )
+    assert (objects.calls, depth.calls, pose.calls) == (3, 3, 2)
+    config = {
+        "video": {"clip_length": 3, "clip_stride": 2, "resize": None},
+        "object_semantic": {
+            "prior_path": str(prior),
+            "min_depth_coverage": 0.5,
+            "max_occlusion_ratio": 0.5,
+            "min_mask_quality": 0.3,
+        },
+        "fusion": {"suspicious_clip_threshold": 0.0, "merge_gap_frames": 1},
+    }
+    pipeline = ForgeryAnalysisPipeline(
+        config=config,
+        object_provider=objects,
+        depth_provider=depth,
+        pose_provider=pose,
+        track_provider=TrackProvider(),
+    )
+    result = pipeline.analyze_observations([observation])
+    assert result.timeline and result.suspicious_clips
+    assert result.object_scores and result.track_scores
+    assert result.metadata["historical_csv_read"] is False
+    paths = save_analysis_outputs(result, [observation], tmp_path / "outputs", heatmap_sigma=1.0)
+    required = {
+        "result", "timeline", "clip_scores", "object_scores", "track_scores",
+        "suspicious_clips", "abnormal_tracks", "structural_heatmap",
+    }
+    assert required <= paths.keys()
+    assert all(paths[name].is_file() and paths[name].stat().st_size > 0 for name in required)

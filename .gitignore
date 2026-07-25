@@ -59,7 +59,9 @@ cache/**
 # Model weights and media are registered by SHA-256, not committed by default.
 checkpoints/
 weights/
-models/
+# Keep local model assets ignored while allowing the paper-core Python package.
+models/*
+!models/*.py
 *.pt
 *.pth
 *.onnx

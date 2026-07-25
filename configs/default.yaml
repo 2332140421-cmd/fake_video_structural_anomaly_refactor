@@ -1,0 +1,36 @@
+data:
+  data_root_env: DATA_ROOT
+video:
+  clip_length: 8
+  clip_stride: 4
+  resize: null
+providers:
+  object_weights: ${MODEL_ROOT}/yolov8n.pt
+  instance_weights: ${MODEL_ROOT}/yolov8n-seg.pt
+  unidepth_weights: ${MODEL_ROOT}/unidepth-v2-vits14
+  unidepth_weight_sha256: 93705cb3295dd7476b44911b8a55f5215bf74e8d5eccd27cecdb1b338270a648
+  device: cpu
+geometry:
+  coordinate_frame: camera_frame_metric
+  world_frame_claimed: false
+  surface_quantiles: [0.05, 0.95]
+object_semantic:
+  prior_path: configs/scale_priors.yaml
+  min_depth_coverage: 0.50
+  max_occlusion_ratio: 0.50
+  min_mask_quality: 0.30
+motion_residuals: {}
+reprojection_residuals: {}
+relation_residuals: {}
+fusion:
+  suspicious_clip_threshold: 0.50
+  merge_gap_frames: 1
+localization:
+  heatmap_sigma: 5.0
+training:
+  hidden_size: 32
+  epochs: 3
+  learning_rate: 0.001
+  checkpoint_dir: ${CHECKPOINT_ROOT}/paper_core_r3
+output:
+  save_visualizations: true

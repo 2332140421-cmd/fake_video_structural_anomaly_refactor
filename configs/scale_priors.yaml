@@ -121,3 +121,42 @@ aliases:
   suitcase: bag
   dog: pet
   cat: pet
+
+# Active PAPER-CORE-R3 unary metric priors. The legacy scale_priors/aliases
+# section above remains only for frozen regression compatibility.
+metric_scale_priors:
+  - category: person
+    dimension: height
+    min_meters: 1.30
+    max_meters: 2.10
+    orientation_requirement: upright_or_unknown
+    minimum_observability: 0.60
+    source_note: broad adult visible-height engineering interval
+  - category: car
+    dimension: length
+    min_meters: 3.00
+    max_meters: 5.50
+    orientation_requirement: side_or_oblique
+    minimum_observability: 0.60
+    source_note: broad passenger-car engineering interval
+  - category: chair
+    dimension: height
+    min_meters: 0.60
+    max_meters: 1.30
+    orientation_requirement: upright_or_unknown
+    minimum_observability: 0.60
+    source_note: broad chair engineering interval
+  - category: cup
+    dimension: height
+    min_meters: 0.07
+    max_meters: 0.20
+    orientation_requirement: upright
+    minimum_observability: 0.70
+    source_note: broad upright-cup engineering interval
+  - category: bottle
+    dimension: height
+    min_meters: 0.12
+    max_meters: 0.40
+    orientation_requirement: upright
+    minimum_observability: 0.70
+    source_note: broad upright-bottle engineering interval

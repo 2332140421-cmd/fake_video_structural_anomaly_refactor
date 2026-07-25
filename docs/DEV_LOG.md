@@ -4610,3 +4610,50 @@ GenVideo-100K 源、恢复当前有效配置所需的公共模型资产，并建
 - `SMALL_SAMPLE_DOWNLOAD_READY=NO`。
 - `REAL_DATA_DRY_RUN_READY=NO`。
 - `FORMAL_TRAINING_READY=NO`。
+
+## 2026-07-25 - PAPER-CORE-R3 Layered Refactor (Uncommitted Worktree)
+
+### 隔离边界与迁移映射
+
+- 从冻结提交 `f1baf7b343c3e4e02ac94ac4ffedaa08708e62c7` 创建独立 worktree
+  `fake_video_structural_anomaly_refactor` 和分支
+  `paper-core-r3-layered-refactor`；原工作区未修改。
+- 在仓库外生成
+  `/root/autodl-tmp/asset_manifests/paper_core_r3_old_to_new_mapping.tsv`，
+  共 39 条旧到新映射、每条 9 个字段。历史 smoke、CSV 阶段串联、
+  M6→A2 bridge、数据集/服务器/Git 审计均退出新 active path，尚未删除。
+
+### 新的论文主流程
+
+- 新增 `data/`、`models/`、`inference/`、`experiments/` 和 `utils/`
+  分层结构。唯一主类 `ForgeryAnalysisPipeline` 使用内存对象执行视频/clip、
+  共享观测、米制对象表面、D1/D2/D3、缺失感知融合和全视频输出。
+- 几何薄封装直接复用既有 backprojection、projection、transform、
+  `Shared3DFrameBuilder`、`Object3DReconstructor`；D1/D2/D3 继续调用既有
+  核心 residual producer，没有重写 YOLO、UniDepth 或几何算法。
+- 对象语义主分支改为单对象 camera-frame metric visible-surface 尺寸区间
+  残差和同 track 米制尺寸稳定性；旧对象对 `R_sd` 不进入默认主流程。
+- 融合保持 unavailable/NaN、coverage 和 confidence 分离；不把 provider
+  failure 或缺失证据编码为 0，也不把工程 risk 声称为校准概率。
+- 输出包括 JSON、完整 timeline、clip/object/track CSV、可疑片段、
+  实际/预测轨迹图和由 residual spatial support 生成的结构热力图。
+- 极小时序头为 LayerNorm→GRU→MLP，当前 12 残差配置 7,881 参数，只学习
+  residual sequence 融合；provider、geometry 和 residual producer 保持冻结。
+
+### 验证与限制
+
+- 六个新论文主线测试文件结果：`13 passed`。覆盖米制几何、对象语义门控
+  与时序稳定性、D1/D2/D3、missing-aware fusion、synthetic 端到端输出，
+  以及 train=16、validation=8、3 epoch、checkpoint/resume。
+- 不依赖外部资产的既有几何/D1/D2/fusion/training 回归：
+  `81 passed, 1 deselected`；deselect 项是旧 A2 测试硬编码 worktree 内
+  `.venv/bin/python`，而隔离 worktree 使用原项目 `.venv` 的绝对解释器。
+- 旧 `test_p4c3b_d3_occlusion.py` 在收集阶段依赖未安装的 `pandas`
+  smoke 模块；本轮没有安装依赖。新 D3 核心与新 residual 测试可独立导入
+  并通过。
+- source-only handoff verifier 通过所有冻结文件 SHA-256；worktree 为预期
+  未提交状态。没有运行真实模型、本地视频推理、M1–M6 或正式训练。
+- 当前只证明 synthetic 工程闭环。真实短视频仍需要本地 provider 资产、
+  可用的外部 UniDepth source，以及实际 cross-frame track/event provider；
+  缺失分支会保持 unavailable。
+- 本轮未提交、未推送、未下载媒体/模型、未删除历史目录。
