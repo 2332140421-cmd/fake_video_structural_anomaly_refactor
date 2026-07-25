@@ -28,11 +28,9 @@ def build_shared_observations(
     track_provider: TrackProvider | None = None,
 ) -> ClipObservation:
     frames: list[FrameObservation] = []
-    objects_by_frame: list[list[ObjectObservation]] = []
     for image, index, timestamp in zip(clip.frames, clip.frame_indices, clip.timestamps):
         objects = list(object_provider.predict(image, index))
         depth, valid, depth_confidence, intrinsics, quality = depth_provider.predict(image, index)
-        objects_by_frame.append(objects)
         frames.append(
             FrameObservation(
                 video_id=clip.video_id,
@@ -67,5 +65,5 @@ def build_shared_observations(
         current.confidence["relative_pose"] = confidence
         if transform is None:
             current.occlusion_states["_pose"] = status
-    tracks = [] if track_provider is None else list(track_provider.track(clip, objects_by_frame))
+    tracks = [] if track_provider is None else list(track_provider.track(clip, frames))
     return ClipObservation(video_id=clip.video_id, clip_id=clip.clip_id, frames=frames, tracks=tracks)

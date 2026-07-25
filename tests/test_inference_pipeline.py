@@ -40,7 +40,7 @@ class PoseProvider:
 
 
 class TrackProvider:
-    def track(self, clip, objects_by_frame):
+    def track(self, clip, frames):
         points = np.array([[0.0, 0.0, 2.0], [0.1, 0.0, 2.0], [0.2, 0.0, 2.0]])
         return [
             TrackObservation(
@@ -92,6 +92,8 @@ def test_synthetic_shared_observation_to_outputs(tmp_path):
     assert result.timeline and result.suspicious_clips
     assert result.object_scores and result.track_scores
     assert result.metadata["historical_csv_read"] is False
+    assert result.metadata["authenticity_label_used"] is False
+    assert result.metadata["m6_to_a2_bridge_called"] is False
     paths = save_analysis_outputs(result, [observation], tmp_path / "outputs", heatmap_sigma=1.0)
     required = {
         "result", "timeline", "clip_scores", "object_scores", "track_scores",

@@ -10,6 +10,7 @@ from models.providers import (
     LegacyDepthIntrinsicsProviderAdapter,
     LegacyObjectProviderAdapter,
     LegacyPoseProviderAdapter,
+    LegacyTrackProviderAdapter,
     RealInstanceMaskProvider,
     RealObjectProvider,
     UniDepthV2Adapter,
@@ -39,12 +40,14 @@ def _pipeline(config_path: str | Path) -> tuple[ForgeryAnalysisPipeline, dict]:
     config["object_semantic"]["prior_path"] = str(
         resolve_path(config, config["object_semantic"]["prior_path"])
     )
+    pose = LegacyPoseProviderAdapter()
     return (
         ForgeryAnalysisPipeline(
             config=config,
             object_provider=LegacyObjectProviderAdapter(detector, segmenter),
             depth_provider=LegacyDepthIntrinsicsProviderAdapter(depth),
-            pose_provider=LegacyPoseProviderAdapter(),
+            pose_provider=pose,
+            track_provider=LegacyTrackProviderAdapter(pose),
         ),
         config,
     )
@@ -58,6 +61,8 @@ def _parser() -> argparse.ArgumentParser:
     analyze.add_argument("--video", required=True)
     analyze.add_argument("--config", default="configs/default.yaml")
     analyze.add_argument("--output", required=True)
+    analyze.add_argument("--max-frames", type=int)
+    analyze.add_argument("--max-clips", type=int)
     train = commands.add_parser("train", help="train only the residual temporal head")
     train.add_argument("--manifest", required=True)
     train.add_argument("--config", default="configs/default.yaml")
@@ -71,7 +76,11 @@ def main() -> int:
     configure_logging(arguments.verbose)
     pipeline, config = _pipeline(arguments.config)
     if arguments.command == "analyze":
-        result = pipeline.analyze_video(arguments.video)
+        result = pipeline.analyze_video(
+            arguments.video,
+            max_frames=arguments.max_frames,
+            max_clips=arguments.max_clips,
+        )
         save_analysis_outputs(
             result,
             pipeline.last_observations,

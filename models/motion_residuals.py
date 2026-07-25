@@ -105,7 +105,7 @@ def compute_motion_residuals(clip: ClipObservation) -> list[ResidualEvidence]:
     for track in clip.tracks:
         points = _legacy_points(track, transforms)
         all_points.extend(points)
-        point_owner[track.object_id] = track
+        point_owner[track.track_id] = track
         if len(points) < 2:
             output.append(
                 ResidualEvidence.unavailable(
@@ -182,7 +182,7 @@ def compute_motion_residuals(clip: ClipObservation) -> list[ResidualEvidence]:
                 )
     continuity = compute_track_3d_continuity_residuals(all_points)
     for item in continuity:
-        track = point_owner.get(item.object_track_id)
+        track = point_owner.get(item.point_id)
         if item.valid and track is not None:
             output.append(
                 _adapt(
@@ -194,7 +194,7 @@ def compute_motion_residuals(clip: ClipObservation) -> list[ResidualEvidence]:
                 )
             )
     for item in compute_direction_consistency_residuals(all_points):
-        track = point_owner.get(item.object_track_id)
+        track = point_owner.get(item.point_id)
         if item.own_history.valid and track is not None:
             output.append(
                 _adapt(
@@ -227,7 +227,7 @@ def compute_motion_residuals(clip: ClipObservation) -> list[ResidualEvidence]:
                 by_frame[frame_index] = scale if scale > 0.0 else None
         scales[track.object_id] = by_frame
     for item in compute_relative_velocity_residuals(all_points, scales):
-        track = point_owner.get(item.object_track_id)
+        track = point_owner.get(item.point_id)
         if item.speed_change_residual.valid and track is not None:
             output.append(
                 _adapt(

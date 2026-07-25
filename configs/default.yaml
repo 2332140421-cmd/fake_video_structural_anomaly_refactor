@@ -2,14 +2,14 @@ data:
   data_root_env: DATA_ROOT
 video:
   clip_length: 8
-  clip_stride: 4
+  clip_stride: 8
   resize: null
 providers:
   object_weights: ${MODEL_ROOT}/yolov8n.pt
   instance_weights: ${MODEL_ROOT}/yolov8n-seg.pt
   unidepth_weights: ${MODEL_ROOT}/unidepth-v2-vits14
   unidepth_weight_sha256: 93705cb3295dd7476b44911b8a55f5215bf74e8d5eccd27cecdb1b338270a648
-  device: cpu
+  device: cuda:0
 geometry:
   coordinate_frame: camera_frame_metric
   world_frame_claimed: false
