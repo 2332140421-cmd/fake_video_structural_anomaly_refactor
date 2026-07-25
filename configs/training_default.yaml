@@ -1,0 +1,33 @@
+data:
+  classification_threshold: 0.5
+
+training:
+  epochs: 3
+  batch_size: 2
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  seed: 42
+  num_workers: 0
+  log_every: 1
+  checkpoint_every: 1
+  amp: true
+  device: cuda
+
+model:
+  hidden_size: 32
+  expected_input_channels: 12
+
+metrics:
+  save_roc_curve: true
+  save_pr_curve: true
+  save_threshold_curve: true
+
+ablation:
+  use_semantic_metric_prior: true
+  use_semantic_metric_temporal: true
+  use_d1: true
+  use_d2: true
+  use_d3: true
+  use_confidence: true
+  use_availability_mask: true
+  temporal_aggregation: learned_head

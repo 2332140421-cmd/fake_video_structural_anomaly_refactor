@@ -28,17 +28,22 @@ class ResidualTemporalHead(nn.Module):
         residuals: torch.Tensor,
         availability: torch.Tensor,
         confidence: torch.Tensor,
+        padding_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         if residuals.ndim != 3 or residuals.shape[-1] != self.residual_count:
             raise ValueError("residuals must have shape [B,T,R].")
         if availability.shape != residuals.shape or confidence.shape != residuals.shape:
             raise ValueError("availability and confidence must match residuals.")
+        if padding_mask is None:
+            padding_mask = availability.any(dim=-1)
+        if padding_mask.shape != residuals.shape[:2]:
+            raise ValueError("padding_mask must have shape [B,T].")
         mask = availability.to(dtype=residuals.dtype)
         values = torch.nan_to_num(residuals, nan=0.0) * mask
         quality = torch.clamp(confidence, 0.0, 1.0) * mask
         features = self.normalization(torch.cat((values, mask, quality), dim=-1))
         encoded, _ = self.temporal(features)
-        valid_steps = availability.any(dim=-1)
+        valid_steps = padding_mask.to(dtype=torch.bool)
         step_indices = torch.arange(encoded.shape[1], device=encoded.device).expand_as(valid_steps)
         last_index = torch.where(valid_steps, step_indices, -1).max(dim=1).values.clamp(min=0)
         batch_index = torch.arange(encoded.shape[0], device=encoded.device)

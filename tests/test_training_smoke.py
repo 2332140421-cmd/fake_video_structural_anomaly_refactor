@@ -59,11 +59,15 @@ def test_temporal_head_forward_backward_and_three_epoch_resume(tmp_path):
     )
     assert len(history) == 3
     assert all(np.isfinite(row["train_loss"]) for row in history)
-    assert (tmp_path / "last.pt").is_file()
-    assert (tmp_path / "best_validation_loss.pt").is_file()
+    assert (tmp_path / "checkpoints" / "last.pt").is_file()
+    assert (tmp_path / "checkpoints" / "best_validation_loss.pt").is_file()
     assert (tmp_path / "training_history.csv").is_file()
     assert (tmp_path / "training_summary.json").is_file()
-    checkpoint = torch.load(tmp_path / "last.pt", map_location="cpu", weights_only=False)
+    checkpoint = torch.load(
+        tmp_path / "checkpoints" / "last.pt",
+        map_location="cpu",
+        weights_only=False,
+    )
     assert checkpoint["random_seed"] == 42
     assert checkpoint["channel_schema"] == schema
     first = evaluate_residual_head(
@@ -89,7 +93,7 @@ def test_temporal_head_forward_backward_and_three_epoch_resume(tmp_path):
         epochs=4,
         hidden_size=16,
         batch_size=8,
-        resume=tmp_path / "last.pt",
+        resume=tmp_path / "checkpoints" / "last.pt",
         device="cpu",
         amp=False,
     )
@@ -158,12 +162,15 @@ def test_frozen_result_loader_preserves_mask_order_and_video_split(tmp_path):
         rows.append(
             {
                 "sample_id": sample_id,
+                "dataset_name": "fixture",
+                "source_video_id": sample_id,
+                "group_id": sample_id,
                 "label": label,
                 "split": split,
                 "residual_sequence_path": residual,
                 "source_video_path": video,
                 "source_commit": "commit",
-                "config_sha256": "config",
+                "source_config_sha256": "config",
             }
         )
     manifest = tmp_path / "manifest.csv"
