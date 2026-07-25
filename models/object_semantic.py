@@ -116,7 +116,101 @@ def _viewpoint(value: str) -> ViewpointClass:
     }.get(value, ViewpointClass.UNKNOWN)
 
 
-def _dimension_observability(frame: Any, obj: Any, cloud: Any) -> dict[str, dict[str, Any]]:
+def _mask_completeness_support(
+    mask: Any,
+    bbox_xyxy: Any,
+    frame_shape: tuple[int, ...],
+) -> dict[str, Any]:
+    """Measure visible-mask fill inside a clipped, discrete bbox support."""
+
+    height, width = (int(frame_shape[0]), int(frame_shape[1]))
+    array = np.asarray(mask)
+    unavailable = {
+        "valid": False,
+        "mask_area_total": float("nan"),
+        "mask_area_inside_bbox": float("nan"),
+        "bbox_area_raw": float("nan"),
+        "bbox_area_clipped": float("nan"),
+        "mask_spill_area": float("nan"),
+        "mask_spill_ratio": float("nan"),
+        "legacy_total_mask_over_raw_bbox_ratio": float("nan"),
+        "mask_completeness": float("nan"),
+        "mask_shape": list(array.shape),
+        "frame_shape": [height, width],
+        "mask_completeness_definition": (
+            "area(bool_mask_intersection_clipped_bbox)"
+            "/area(clipped_bbox_discrete_half_open)"
+        ),
+    }
+    if array.ndim != 2 or array.shape != (height, width):
+        return {**unavailable, "reason": "mask_shape_mismatch"}
+    try:
+        x1, y1, x2, y2 = (float(value) for value in bbox_xyxy)
+    except (TypeError, ValueError):
+        return {**unavailable, "reason": "invalid_bbox"}
+    if not all(math.isfinite(value) for value in (x1, y1, x2, y2)):
+        return {**unavailable, "reason": "invalid_bbox"}
+
+    # xyxy is discretized as a half-open pixel slice.  floor(left/top) and
+    # ceil(right/bottom) include every pixel touched by the continuous bbox;
+    # the resulting integer support is then clipped to the image.
+    left = min(width, max(0, math.floor(x1)))
+    top = min(height, max(0, math.floor(y1)))
+    right = min(width, max(0, math.ceil(x2)))
+    bottom = min(height, max(0, math.ceil(y2)))
+    clipped_bbox = [left, top, right, bottom]
+    bbox_area = (right - left) * (bottom - top)
+    if x2 <= x1 or y2 <= y1 or bbox_area <= 0:
+        return {
+            **unavailable,
+            "reason": "invalid_clipped_bbox",
+            "bbox_clipped_xyxy": clipped_bbox,
+        }
+
+    boolean_mask = array.astype(bool, copy=False)
+    total_area = int(np.count_nonzero(boolean_mask))
+    inside_area = int(np.count_nonzero(boolean_mask[top:bottom, left:right]))
+    spill_area = total_area - inside_area
+    raw_bbox_area = (x2 - x1) * (y2 - y1)
+    completeness = inside_area / bbox_area
+    if not math.isfinite(completeness):
+        return {
+            **unavailable,
+            "reason": "non_finite_mask_completeness",
+            "bbox_clipped_xyxy": clipped_bbox,
+        }
+    if not -1e-12 <= completeness <= 1.0 + 1e-12:
+        raise ValueError("mask completeness support calculation escaped [0, 1].")
+    completeness = min(1.0, max(0.0, completeness))
+    return {
+        "valid": True,
+        "reason": "",
+        "mask_area_total": total_area,
+        "mask_area_inside_bbox": inside_area,
+        "bbox_area_raw": raw_bbox_area,
+        "bbox_area_clipped": bbox_area,
+        "mask_spill_area": spill_area,
+        "mask_spill_ratio": spill_area / total_area if total_area else 0.0,
+        "legacy_total_mask_over_raw_bbox_ratio": (
+            total_area / max(raw_bbox_area, 1.0)
+        ),
+        "mask_completeness": completeness,
+        "bbox_clipped_xyxy": clipped_bbox,
+        "mask_shape": list(boolean_mask.shape),
+        "frame_shape": [height, width],
+        "mask_completeness_definition": (
+            "area(bool_mask_intersection_clipped_bbox)"
+            "/area(clipped_bbox_discrete_half_open)"
+        ),
+    }
+
+
+def _dimension_observability(
+    frame: Any,
+    obj: Any,
+    cloud: Any,
+    mask_support: Mapping[str, Any],
+) -> dict[str, dict[str, Any]]:
     container_axis, axis_diagnostics = _container_axis_evidence(cloud)
     viewpoint = _viewpoint(obj.viewpoint)
     explicit_pose = str(obj.metadata.get("pose_estimate_status", "unavailable"))
@@ -128,7 +222,6 @@ def _dimension_observability(frame: Any, obj: Any, cloud: Any) -> dict[str, dict
         and obj.category in {"cup", "bottle", "vase"}
     ):
         explicit_pose = PoseEstimateStatus.UPRIGHT_SHAPE_COMPATIBLE.value
-    x1, y1, x2, y2 = obj.bbox_xyxy
     view = evaluate_object_view(
         ObjectViewInput(
             object_id=obj.object_id,
@@ -138,8 +231,8 @@ def _dimension_observability(frame: Any, obj: Any, cloud: Any) -> dict[str, dict
             image_width=frame.image.shape[1],
             image_height=frame.image.shape[0],
             detection_confidence=obj.confidence,
-            mask_area=float(np.count_nonzero(obj.instance_mask)),
-            bbox_area=max((x2 - x1) * (y2 - y1), 1.0),
+            mask_area=float(mask_support["mask_area_inside_bbox"]),
+            bbox_area=float(mask_support["bbox_area_clipped"]),
             occlusion_ratio=obj.occlusion_ratio,
             viewpoint_hint=viewpoint,
             pose_estimate_status=explicit_pose,
@@ -149,8 +242,7 @@ def _dimension_observability(frame: Any, obj: Any, cloud: Any) -> dict[str, dict
                 else float("nan")
             ),
             metadata={
-                "mask_completeness": float(np.count_nonzero(obj.instance_mask))
-                / max((x2 - x1) * (y2 - y1), 1.0),
+                "mask_completeness": float(mask_support["mask_completeness"]),
                 "mask_is_visible_not_amodal": True,
                 "depth_extent_supported": False,
             },
@@ -207,6 +299,7 @@ def _dimension_observability(frame: Any, obj: Any, cloud: Any) -> dict[str, dict
             "pose_estimate_status": view.pose_estimate_status.value,
             "visible_surface_only": True,
             "axis_diagnostics": axis_diagnostics if dimension == "height" else {},
+            "mask_support": dict(mask_support),
         }
     return records
 
@@ -235,6 +328,19 @@ def compute_object_semantic_residuals(
     history: dict[tuple[str, str], list[tuple[int, float, float, str]]] = {}
     for frame in clip.frames:
         for obj in frame.objects:
+            mask_support = (
+                {
+                    "valid": False,
+                    "reason": "instance_mask_unavailable",
+                    "mask_completeness": float("nan"),
+                }
+                if obj.instance_mask is None
+                else _mask_completeness_support(
+                    obj.instance_mask,
+                    obj.bbox_xyxy,
+                    frame.image.shape,
+                )
+            )
             support = {
                 "kind": "object_mask",
                 "mask": obj.instance_mask,
@@ -249,6 +355,7 @@ def compute_object_semantic_residuals(
                 "dimension_observability": [],
                 "old_object_pair_rsd_used": False,
                 "authenticity_label_used": False,
+                "mask_support": dict(mask_support),
             }
             reason = ""
             prior = priors.get(obj.category)
@@ -256,6 +363,8 @@ def compute_object_semantic_residuals(
                 reason = "missing_category_metric_prior"
             elif obj.instance_mask is None or not np.any(obj.instance_mask):
                 reason = "instance_mask_unavailable"
+            elif not bool(mask_support["valid"]):
+                reason = str(mask_support["reason"])
             elif obj.occlusion_ratio > max_occlusion_ratio:
                 reason = "severe_object_occlusion"
             elif obj.mask_quality < min_mask_quality:
@@ -273,7 +382,9 @@ def compute_object_semantic_residuals(
             ):
                 reason = "insufficient_valid_metric_depth_ratio"
             dimensions = (
-                {} if cloud is None or not cloud.valid else _dimension_observability(frame, obj, cloud)
+                {}
+                if cloud is None or not cloud.valid
+                else _dimension_observability(frame, obj, cloud, mask_support)
             )
             if prior is not None and prior.dimension in dimensions:
                 selected = dimensions[prior.dimension]

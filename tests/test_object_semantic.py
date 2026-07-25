@@ -3,7 +3,10 @@ from pathlib import Path
 import numpy as np
 
 from data.schemas import ClipObservation, FrameObservation, ObjectObservation
-from models.object_semantic import compute_object_semantic_residuals
+from models.object_semantic import (
+    _mask_completeness_support,
+    compute_object_semantic_residuals,
+)
 
 
 def _prior(
@@ -90,6 +93,89 @@ def _clip(
 
 def _semantic(clip, prior):
     return compute_object_semantic_residuals(clip, prior_path=prior)
+
+
+def test_mask_completeness_uses_discrete_bbox_intersection():
+    mask = np.zeros((8, 10), dtype=bool)
+    mask[2:5, 3:7] = True
+    support = _mask_completeness_support(mask, (2.0, 1.0, 8.0, 6.0), mask.shape)
+
+    assert support["valid"]
+    assert support["mask_area_total"] == 12
+    assert support["mask_area_inside_bbox"] == 12
+    assert support["bbox_area_clipped"] == 30
+    assert support["mask_completeness"] == 12 / 30
+    assert 0.0 <= support["mask_completeness"] <= 1.0
+
+
+def test_mask_completeness_excludes_mask_spill_outside_bbox():
+    mask = np.zeros((8, 10), dtype=bool)
+    mask[1:7, 1:9] = True
+    support = _mask_completeness_support(mask, (3.0, 2.0, 7.0, 6.0), mask.shape)
+
+    assert support["valid"]
+    assert support["mask_area_total"] == 48
+    assert support["mask_area_inside_bbox"] == 16
+    assert support["bbox_area_clipped"] == 16
+    assert support["mask_spill_area"] == 32
+    assert support["mask_completeness"] == 1.0
+    assert support["legacy_total_mask_over_raw_bbox_ratio"] == 3.0
+    assert support["mask_completeness"] != support["legacy_total_mask_over_raw_bbox_ratio"]
+
+
+def test_mask_completeness_clips_bbox_before_using_pixel_area():
+    mask = np.zeros((8, 10), dtype=bool)
+    mask[0:3, 0:4] = True
+    support = _mask_completeness_support(mask, (-2.2, -1.4, 4.0, 3.0), mask.shape)
+
+    assert support["valid"]
+    assert support["bbox_clipped_xyxy"] == [0, 0, 4, 3]
+    assert support["bbox_area_clipped"] == 12
+    assert support["mask_area_inside_bbox"] == 12
+    assert support["mask_completeness"] == 1.0
+
+
+def test_mask_completeness_rejects_empty_bbox_and_shape_mismatch():
+    mask = np.ones((8, 10), dtype=bool)
+    empty = _mask_completeness_support(mask, (4.0, 3.0, 4.0, 6.0), mask.shape)
+    mismatch = _mask_completeness_support(
+        np.ones((7, 10), dtype=bool),
+        (1.0, 1.0, 5.0, 5.0),
+        mask.shape,
+    )
+
+    assert not empty["valid"]
+    assert empty["reason"] == "invalid_clipped_bbox"
+    assert np.isnan(empty["mask_completeness"])
+    assert not mismatch["valid"]
+    assert mismatch["reason"] == "mask_shape_mismatch"
+    assert np.isnan(mismatch["mask_completeness"])
+
+
+def test_invalid_mask_support_becomes_explicit_semantic_unavailable(tmp_path):
+    prior = _prior(tmp_path / "prior.yaml")
+    empty_bbox_clip = _clip([1.0])
+    empty_bbox_clip.frames[0].objects[0].bbox_xyxy = (4.0, 3.0, 4.0, 6.0)
+    mismatched_mask_clip = _clip([1.0])
+    mismatched_mask_clip.frames[0].objects[0].instance_mask = np.ones(
+        (19, 20), dtype=bool
+    )
+
+    empty = _semantic(empty_bbox_clip, prior)[0]
+    mismatch = _semantic(mismatched_mask_clip, prior)[0]
+    assert not empty.valid_mask and np.isnan(empty.raw_value)
+    assert empty.reason == "invalid_clipped_bbox"
+    assert not mismatch.valid_mask and np.isnan(mismatch.raw_value)
+    assert mismatch.reason == "mask_shape_mismatch"
+
+
+def test_mask_completeness_is_label_blind():
+    mask = np.zeros((8, 10), dtype=bool)
+    mask[2:5, 3:7] = True
+    real_input = _mask_completeness_support(mask, (2, 1, 8, 6), mask.shape)
+    fake_input = _mask_completeness_support(mask.copy(), (2, 1, 8, 6), mask.shape)
+
+    assert real_input == fake_input
 
 
 def test_metric_size_inside_above_and_below_prior(tmp_path):
