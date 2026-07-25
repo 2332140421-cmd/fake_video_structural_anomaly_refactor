@@ -15,7 +15,7 @@ import os
 import time
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping, Optional
 
@@ -29,6 +29,11 @@ from ..depth_provider import (
     LargerValueMeans,
 )
 from ..geometry.camera import CameraObservation, CoordinateConvention
+from ..runtime.external_sources import (
+    ExternalSourceError,
+    activate_unidepth_source,
+    verify_unidepth_source,
+)
 from .metric_scale import (
     MetricDepthDefinition,
     MetricDepthEvidence,
@@ -331,6 +336,42 @@ class UniDepthV2Adapter(BaseMetricDepthAdapter):
         self._model: Any = None
         self._torch: Any = None
 
+    def describe(self) -> MetricDepthAdapterDescriptor:
+        """Report a pinned source checkout as an available dependency."""
+
+        source_verified = False
+        if self._model_factory is None and self.expected_module == "unidepth":
+            try:
+                verify_unidepth_source()
+            except ExternalSourceError:
+                pass
+            else:
+                source_verified = True
+        descriptor = super().describe()
+        if source_verified and not descriptor.dependency_available:
+            status = (
+                "not_executed"
+                if descriptor.weights_available and descriptor.weight_hash_verified
+                else "blocked_by_input"
+            )
+            return replace(
+                descriptor,
+                dependency_available=True,
+                adapter_status=status,
+            )
+        return descriptor
+
+    def _activate_external_source(self) -> None:
+        if self._model_factory is not None or self.expected_module != "unidepth":
+            return
+        try:
+            activate_unidepth_source()
+        except ExternalSourceError as exc:
+            raise MetricProviderRuntimeError(
+                "metric_provider_dependency_missing",
+                f"Verified UniDepth source is unavailable: {exc}",
+            ) from exc
+
     def _resolved_device(self, torch_module: Any) -> str:
         if self.device == "auto":
             return "cuda" if bool(torch_module.cuda.is_available()) else "cpu"
@@ -349,6 +390,7 @@ class UniDepthV2Adapter(BaseMetricDepthAdapter):
     def _load_model(self) -> tuple[Any, Any, str]:
         """Lazy-load the model strictly from verified local files."""
 
+        self._activate_external_source()
         self._require_local_runtime()
         if self._model is not None:
             assert self._torch is not None
@@ -467,7 +509,7 @@ class UniDepthV2Adapter(BaseMetricDepthAdapter):
         try:
             provider_version = importlib.metadata.version("unidepth")
         except importlib.metadata.PackageNotFoundError:
-            provider_version = "unknown"
+            provider_version = f"source@{UNIDEPTH_V2_SOURCE_REVISION}"
         peak_memory = (
             int(torch.cuda.max_memory_allocated(resolved_device))
             if resolved_device.startswith("cuda")

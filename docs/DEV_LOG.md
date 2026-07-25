@@ -4421,3 +4421,63 @@ GenVideo-100K 源、恢复当前有效配置所需的公共模型资产，并建
 - `SMALL_SAMPLE_DOWNLOAD_READY=NO`。
 - `REAL_DATA_DRY_RUN_READY=NO`。
 - `FORMAL_TRAINING_READY=NO`。
+
+## 2026-07-25 - P4-C3C-A3-A.2 Public Asset Remediation
+
+### 资产冻结
+
+- 保留 `yolo_weights_v1.yaml` 作为历史记录，未改写其大小或 SHA-256。
+- 新增活跃 `yolo_weights_v2.yaml`。detect、segment、pose 三份权重均来自
+  Ultralytics 官方 `v8.4.0` release；官方 release API 声明的大小与
+  SHA-256 分别和本地文件完全一致，三项状态均为 `VERIFIED`。
+- 新增 `depth_anything_v2_small_v1.yaml`，固定官方源 revision、Hugging
+  Face model revision、weight/config/preprocessor 的大小与 SHA-256。
+  该 registry 只声明 Small（24.8M，Apache-2.0），输出语义保持
+  relative depth，不标记为 metric depth。
+- 新增公共资产 active profile，通过 `MODEL_ROOT`、`HF_HOME` 和
+  `SEMANTIC3D_UNIDEPTH_SOURCE_ROOT` 选择外部资产；配置不包含机器绝对路径，
+  也不允许隐式下载。
+
+### UniDepth 环境收敛
+
+- 采用方案 B：仅移除 UniDepth editable distribution 的 `.pth` 和
+  `dist-info` 元数据，保留固定 vendor 源码、weight 和 config。
+- 新增受控 source-root helper。只有环境显式提供源码根、Git HEAD 等于
+  registry revision 且 vendor worktree 干净时，当前进程才会激活
+  UniDepth import。
+- 当前 UniDepthV2 推理路径所需的 torch、torchvision、triton、einops、
+  timm、scipy 和 wandb 保持不变。未安装训练、评测、UI 或可选加速路径
+  才需要的完整依赖，也未安装 xformers 或 torchaudio。
+- 环境变更前后 package diff 只有 editable UniDepth 分发元数据被移除；
+  torch、torchvision、transformers、triton 和 CUDA 栈未变化。
+- `python -m pip check` 从 UniDepth 上游完整依赖元数据导致的非零恢复为
+  `No broken requirements found`。
+
+### GPU smoke 与测试
+
+- YOLO detect、segment、pose 三份新 registry 权重分别完成反序列化和
+  CUDA load；没有执行图像或视频 inference。
+- UniDepth 从固定、干净的源码 revision 和固定本地模型目录离线加载，
+  对 64×64 合成 RGB tensor 输出有限的 depth 和 intrinsics。
+- Depth Anything V2 Small 从固定本地 snapshot 离线加载，对 224×224
+  合成 tensor 完成 GPU forward，输出有限且仅解释为 relative depth。
+- smoke 只验证加载、接口、数值有限性和 CUDA 可执行性，不代表性能或
+  方法效果；输出保存在 Git 忽略目录。
+- A3-A.2 资产专项、受控 source handoff、A3 bridge、A2、A1、M6 以及必要
+  registry 保护测试联合结果为 `90 passed`。
+- 未下载任何视频，未运行 M1–M6 真实批处理，未执行真实训练。
+
+`KNOWN_DEFERRED_TEST_DEPENDENCY`：旧 metric-provider 测试需要未声明的
+`pandas`；在真实流水线测试阶段单独决定是否加入测试依赖组。该依赖不是
+本阶段模型 runtime 必需项，不影响三类公共模型的 load smoke 或资产状态。
+
+### 当前状态
+
+- `YOLO_ASSETS_READY=YES`。
+- `DEPTH_ANYTHING_ASSET_READY=YES`。
+- `UNIDEPTH_ENV_READY=YES`。
+- `PUBLIC_MODEL_ASSETS_READY=YES`。
+- `GENVIDEO_OFFICIAL_SCHEMA_VERIFIED=NO`。
+- `M6_TO_A2_BRIDGE_READY=YES`。
+- `REAL_DATA_DRY_RUN_READY=NO`。
+- `FORMAL_TRAINING_READY=NO`。

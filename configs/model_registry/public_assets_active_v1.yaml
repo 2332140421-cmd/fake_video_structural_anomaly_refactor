@@ -1,0 +1,23 @@
+schema_version: semantic3d_public_asset_profile_v1
+profile_id: p4c3c_a3a2_public_assets
+automatic_download_allowed: false
+registries:
+  yolo:
+    active: configs/model_registry/yolo_weights_v2.yaml
+    historical:
+      - configs/model_registry/yolo_weights_v1.yaml
+  unidepth:
+    active: configs/model_registry/unidepth_v2_vits14_v1.yaml
+  depth_anything:
+    active: configs/model_registry/depth_anything_v2_small_v1.yaml
+runtime_locations:
+  yolo_model_root: ${MODEL_ROOT}
+  unidepth_source_root: ${SEMANTIC3D_UNIDEPTH_SOURCE_ROOT}
+  unidepth_model_root: ${MODEL_ROOT}/unidepth-v2-vits14
+  depth_anything_cache_root: ${HF_HOME}/hub
+policy:
+  require_exact_revision: true
+  require_exact_size: true
+  require_exact_sha256: true
+  prohibit_git_model_binaries: true
+  prohibit_implicit_downloads: true

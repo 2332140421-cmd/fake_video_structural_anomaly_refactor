@@ -1,0 +1,46 @@
+schema_version: semantic3d_model_weight_registry_v1
+registry_id: depth_anything_v2_small_v1
+model_family: Depth Anything V2
+model_variant: Small
+task: monocular_relative_depth_estimation
+official_repository: https://github.com/DepthAnything/Depth-Anything-V2
+official_model_source: https://huggingface.co/depth-anything/Depth-Anything-V2-Small-hf
+source_revision: a561b849ebae10a6f5ef49e26c83cbbcd36c71bf
+model_revision: 5426e4f0f36572d16453bbda7a8389317b1bef99
+filename: model.safetensors
+file_size: 99173660
+sha256: 3152477ce0d8d6978d76b995120de97cb5b928701fd0f817769f59e249a16b70
+parameter_count: 24800000
+license: Apache-2.0
+commercial_use: permitted_for_small_variant_subject_to_apache_2_0_terms
+expected_library: transformers
+expected_library_version: 5.13.0
+expected_input:
+  modality: RGB_image
+  processor: AutoImageProcessor
+  tensor_layout: batch_channel_height_width
+output_semantics:
+  depth_type: relative_depth
+  metric_depth: false
+  physical_unit: none
+  larger_value_means: farther_after_project_canonical_conversion
+  must_not_be_interpreted_as: metric_depth_in_meters
+active_pipeline_usage:
+  stage: P4-B.5
+  component: stage_06_depth_precomputation
+  provider: depth_anything_v2_small_hf
+  purpose: canonical_relative_depth_for_decodable_owned_frames
+cache_policy:
+  root: ${HF_HOME}/hub
+  snapshot_path: >-
+    ${HF_HOME}/hub/models--depth-anything--Depth-Anything-V2-Small-hf/snapshots/${MODEL_REVISION}
+  automatic_download_allowed: false
+  git_distribution_allowed: false
+companion_files:
+  - filename: config.json
+    file_size: 950
+    sha256: c56698d3643dde1f83ea2212759e6b31a22b8f827246a36dd007ee8a22b3ff75
+  - filename: preprocessor_config.json
+    file_size: 775
+    sha256: d41175c0d889477ca8fc67191e540faef14baf6275157b3fdecf78469e6bbf84
+verification_status: VERIFIED

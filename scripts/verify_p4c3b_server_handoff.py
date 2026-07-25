@@ -15,6 +15,11 @@ from typing import Any, Mapping
 
 import yaml
 
+from semantic3d.runtime.external_sources import (
+    ExternalSourceError,
+    activate_unidepth_source,
+)
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG = "configs/handoff/p4c3b_m2_server_handoff_v1.yaml"
 
@@ -237,11 +242,25 @@ def build_handoff_report(
     )
     artifacts = _check_artifacts(root, config["local_artifacts"])
     package = config["provider_source"]["package"]
-    package_available = importlib.util.find_spec(package) is not None
+    source_revision = ""
+    source_worktree_clean = False
+    import_mode = "python_distribution"
+    if package == "unidepth":
+        try:
+            source = activate_unidepth_source()
+        except ExternalSourceError:
+            package_available = importlib.util.find_spec(package) is not None
+        else:
+            package_available = True
+            source_revision = source.revision
+            source_worktree_clean = source.worktree_clean
+            import_mode = "verified_external_source_root"
+    else:
+        package_available = importlib.util.find_spec(package) is not None
     try:
         package_version = importlib.metadata.version(package) if package_available else ""
     except importlib.metadata.PackageNotFoundError:
-        package_version = ""
+        package_version = f"source@{source_revision}" if source_revision else ""
     source_ready = all(source_checks.values()) and all(
         row["matches"] for row in frozen.values()
     )
@@ -285,6 +304,9 @@ def build_handoff_report(
             **dict(config["provider_source"]),
             "installed": package_available,
             "installed_version": package_version,
+            "import_mode": import_mode,
+            "verified_source_revision": source_revision,
+            "source_worktree_clean": source_worktree_clean,
         },
         "models": model_checks,
         "videos": video_checks,

@@ -1,0 +1,76 @@
+registry:
+  schema_version: semantic3d_model_registry_v1
+  registry_id: yolo_weights_v2
+  status: active
+  supersedes_for_server_execution: configs/model_registry/yolo_weights_v1.yaml
+  historical_registry_retained: true
+  official_repository: https://github.com/ultralytics/assets
+  official_release_tag: v8.4.0
+  official_release_url: https://github.com/ultralytics/assets/releases/tag/v8.4.0
+  expected_library: ultralytics
+  expected_library_version: 8.4.90
+  license_review_note: >-
+    Ultralytics documents AGPL-3.0 and Enterprise licensing options for YOLOv8
+    models. Redistribution approval has not been independently confirmed, so
+    the weight binaries must not be committed to Git.
+
+models:
+  - model_id: yolov8n_detection_v8_4_0
+    filename: yolov8n.pt
+    variant: YOLOv8n detection
+    task: detect
+    purpose: object_detection
+    source: https://github.com/ultralytics/assets/releases/download/v8.4.0/yolov8n.pt
+    official_release_tag: v8.4.0
+    official_asset_digest: sha256:f59b3d833e2ff32e194b5bb8e08d211dc7c5bdf144b90d2c8412c47ccfc83b36
+    license_status: upstream_agpl_or_enterprise_terms_recorded_redistribution_not_reviewed
+    redistribution_allowed: false
+    expected_library: ultralytics
+    expected_library_version: 8.4.90
+    size_bytes: 6549796
+    sha256: f59b3d833e2ff32e194b5bb8e08d211dc7c5bdf144b90d2c8412c47ccfc83b36
+    server_target_path: ${MODEL_ROOT}/yolov8n.pt
+    acquisition_method: pinned_official_release_asset_then_size_and_sha256_verify
+    verification_status: VERIFIED
+    active: true
+    required_for_server_smoke: true
+
+  - model_id: yolov8n_segmentation_v8_4_0
+    filename: yolov8n-seg.pt
+    variant: YOLOv8n instance segmentation
+    task: segment
+    purpose: instance_segmentation
+    source: https://github.com/ultralytics/assets/releases/download/v8.4.0/yolov8n-seg.pt
+    official_release_tag: v8.4.0
+    official_asset_digest: sha256:a7cd8f929e1903d78a12a48efecab430209f18dc46cb96c3599a5980c63c423c
+    license_status: upstream_agpl_or_enterprise_terms_recorded_redistribution_not_reviewed
+    redistribution_allowed: false
+    expected_library: ultralytics
+    expected_library_version: 8.4.90
+    size_bytes: 7071756
+    sha256: a7cd8f929e1903d78a12a48efecab430209f18dc46cb96c3599a5980c63c423c
+    server_target_path: ${MODEL_ROOT}/yolov8n-seg.pt
+    acquisition_method: pinned_official_release_asset_then_size_and_sha256_verify
+    verification_status: VERIFIED
+    active: true
+    required_for_server_smoke: true
+
+  - model_id: yolov8n_pose_v8_4_0
+    filename: yolov8n-pose.pt
+    variant: YOLOv8n human pose
+    task: pose
+    purpose: human_keypoints
+    source: https://github.com/ultralytics/assets/releases/download/v8.4.0/yolov8n-pose.pt
+    official_release_tag: v8.4.0
+    official_asset_digest: sha256:c6fa93dd1ee4a2c18c900a45c1d864a1c6f7aba75d84f91648a30b7fb641d212
+    license_status: upstream_agpl_or_enterprise_terms_recorded_redistribution_not_reviewed
+    redistribution_allowed: false
+    expected_library: ultralytics
+    expected_library_version: 8.4.90
+    size_bytes: 6832633
+    sha256: c6fa93dd1ee4a2c18c900a45c1d864a1c6f7aba75d84f91648a30b7fb641d212
+    server_target_path: ${MODEL_ROOT}/yolov8n-pose.pt
+    acquisition_method: pinned_official_release_asset_then_size_and_sha256_verify
+    verification_status: VERIFIED
+    active: true
+    required_for_server_smoke: true
