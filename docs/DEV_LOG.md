@@ -4481,3 +4481,62 @@ GenVideo-100K 源、恢复当前有效配置所需的公共模型资产，并建
 - `M6_TO_A2_BRIDGE_READY=YES`。
 - `REAL_DATA_DRY_RUN_READY=NO`。
 - `FORMAL_TRAINING_READY=NO`。
+
+## 2026-07-25 - P4-C3C-A3-B0 Formal Dataset Selection Audit
+
+### 官方 metadata 与 split
+
+- 复核 GenVideo-100K 后，官方树仍只有 README、Git 属性文件和 15 个
+  archive/part；没有 record metadata 或 official split。既有 adapter
+  保持 skeleton，`official_schema_verified=false`。
+- GenVidBench 官方 Hugging Face 提供的 `Pair1_labels.txt` 和
+  `Pair2_labels.txt` 分别有 74,135 与 67,860 条 path/label 记录。论文将
+  Pair1 定义为 train、Pair2 定义为 test，但未定义 validation；两文件合计
+  141,995 条，并不构成论文 6,784,490 视频的完整 record manifest。
+- DeCoF 固定仓库 revision 下的 prompts metadata 有 964 个唯一
+  `video_id`。官方 split 为 train=771、validation=96、test=97，三者互斥
+  且穷尽全部 ID；metadata 保留 MSVD/MSRVTT source 和 prompt lineage。
+- BrokenVideos 论文核验了 frame-level PNG pixel mask、multi-instance
+  artifact region 和五类 artifact taxonomy，但项目页 3,141 与论文
+  3,254 视频的差异未解释，也没有核验到可下载 record/split/layout
+  manifest。
+
+### 路线选择与阻塞项
+
+- 检测主候选选择 DeCoF：record identity、source lineage 和 official
+  split 最完整，适合先实现 formal metadata adapter；但数据许可、真实视频
+  恢复、archive member 对齐和无 test 下载仍阻塞。
+- 空间定位主候选选择 BrokenVideos：pixel mask 与 J/F/J&F 目标直接匹配；
+  但数据许可、下载版本、目录对应和 split schema 未核验。
+- GenVidBench 作为后续 cross-source/cross-generator 泛化候选；其完整媒体
+  依赖 archive 化的官方 HF/VidProM 源，不适合作为首次 20–50 样本
+  dry-run。
+- GenVideo-100K 继续 deferred，不把原 GenVideo CSV 或 archive 名称当作
+  100K record schema。
+
+### 审计基础设施
+
+- 新增四候选统一 registry，所有记录均保持
+  `selection_status=candidate`、`data_downloaded=false`、
+  `production_adapter_ready=false` 和
+  `official_schema_verified=false`。
+- 新增 metadata-only registry validator 与 inspection CLI。默认只读
+  stdout，不访问网络、不下载媒体、不推断 label/generator、不生成随机
+  split。
+- 新增安全不变量测试，覆盖评分字段、许可状态、official-test 排除、
+  `UNRESOLVED_SCHEMA`、零媒体字节和未核验 schema 不得 ready。
+- A3-B0、A3 bridge、A2 与 A1 指定联合回归结果为 `82 passed`。
+- 官方 README、LICENSE、API tree、论文、JSONL/TXT/CSV 与 split 审计缓存
+  保存在 Git 仓库之外；本阶段媒体下载量为 0 字节。
+- 未运行模型、M1–M6、真实流水线或训练。
+
+### 当前状态
+
+- `DATASET_SELECTION_AUDIT_COMPLETE=YES`。
+- `PRIMARY_DETECTION_DATASET_SELECTED=YES`。
+- `PRIMARY_SPATIAL_DATASET_SELECTED=YES`。
+- `SMALL_SAMPLE_SOURCE_IDENTIFIED=YES`。
+- `SMALL_SAMPLE_DOWNLOAD_READY=NO`。
+- `GENVIDEO_OFFICIAL_SCHEMA_VERIFIED=NO`。
+- `REAL_DATA_DRY_RUN_READY=NO`。
+- `FORMAL_TRAINING_READY=NO`。

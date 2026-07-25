@@ -1,0 +1,420 @@
+schema_version: semantic3d_dataset_candidate_audit_v1
+audit_stage: P4-C3C-A3-B0
+audit_date_utc: "2026-07-25"
+allowed_status_values:
+  - VERIFIED
+  - PARTIAL
+  - UNVERIFIED
+  - BLOCKED
+  - NOT_AVAILABLE
+  - NOT_APPLICABLE
+required_record_fields:
+  - dataset_id
+  - dataset_name
+  - task_scope
+  - official_repository
+  - official_dataset_host
+  - official_paper
+  - repository_revision
+  - dataset_revision
+  - license
+  - terms_acceptance_required
+  - access_approval_required
+  - commercial_use
+  - record_metadata_available
+  - metadata_filename
+  - metadata_format
+  - metadata_record_count
+  - sample_id_field
+  - video_path_field
+  - label_field
+  - label_values
+  - is_real_field
+  - generator_field
+  - real_source_field
+  - prompt_field
+  - official_split_available
+  - split_field
+  - split_values
+  - train_count
+  - validation_count
+  - test_count
+  - temporal_annotation_available
+  - temporal_annotation_format
+  - spatial_annotation_available
+  - spatial_annotation_format
+  - mask_available
+  - source_lineage_available
+  - checksum_available
+  - single_file_download_supported
+  - include_exclude_supported
+  - streaming_supported
+  - minimum_download_unit
+  - minimum_download_bytes
+  - full_download_bytes
+  - archive_layout_known
+  - extracted_layout_known
+  - small_sample_selection_possible
+  - small_sample_selection_without_test_possible
+  - formal_schema_mapping_possible
+  - license_status
+  - schema_status
+  - download_status
+  - blocking_items
+  - recommended_role
+score_fields:
+  A: video_level_real_fake_detection
+  B: segment_level_temporal_localization
+  C: region_or_pixel_spatial_localization
+  D: non_face_scene_coverage
+  E: generator_diversity
+  F: official_split_completeness
+  G: source_lineage_completeness
+  H: sample_20_to_50_accessibility
+  I: license_clarity
+  J: current_integration_ease
+policies:
+  media_download_bytes: 0
+  metadata_only: true
+  random_split_allowed: false
+  official_test_media_allowed_in_small_sample: false
+  label_from_path_allowed: false
+  generator_from_filename_allowed: false
+  external_cache_tracked_in_git: false
+recommendation:
+  primary_detection_dataset: decof
+  primary_spatial_localization_dataset: brokenvideos
+  secondary_generalization_dataset: genvidbench
+  deferred_dataset: genvideo_100k
+  small_sample_source_identified: true
+  small_sample_download_ready: false
+datasets:
+  - dataset_id: genvideo_100k
+    dataset_name: GenVideo-100K
+    task_scope:
+      - video_level_real_fake_detection
+      - temporal_consistency_research
+    official_repository: https://github.com/chenhaoxing/DeMamba
+    official_dataset_host: https://modelscope.cn/datasets/cccnju/GenVideo-100K
+    official_paper: https://arxiv.org/abs/2405.19707
+    repository_revision: 72c9386bab2484ddfe9fccc8d254de7298196446
+    dataset_revision: b31a22ff523263c6915a480966cbab1c87eca345
+    license: CC-BY-NC-SA-4.0
+    terms_acceptance_required: VERIFIED
+    access_approval_required: VERIFIED
+    commercial_use: BLOCKED
+    record_metadata_available: NOT_AVAILABLE
+    metadata_filename: NOT_AVAILABLE
+    metadata_format: NOT_AVAILABLE
+    metadata_record_count: NOT_AVAILABLE
+    sample_id_field: UNRESOLVED_SCHEMA
+    video_path_field: UNRESOLVED_SCHEMA
+    label_field: UNRESOLVED_SCHEMA
+    label_values: UNRESOLVED_SCHEMA
+    is_real_field: UNRESOLVED_SCHEMA
+    generator_field: UNRESOLVED_SCHEMA
+    real_source_field: UNRESOLVED_SCHEMA
+    prompt_field: UNRESOLVED_SCHEMA
+    official_split_available: NOT_AVAILABLE
+    split_field: UNRESOLVED_SCHEMA
+    split_values: UNRESOLVED_SCHEMA
+    train_count: NOT_AVAILABLE
+    validation_count: NOT_AVAILABLE
+    test_count: NOT_AVAILABLE
+    temporal_annotation_available: NOT_AVAILABLE
+    temporal_annotation_format: NOT_AVAILABLE
+    spatial_annotation_available: NOT_AVAILABLE
+    spatial_annotation_format: NOT_AVAILABLE
+    mask_available: NOT_AVAILABLE
+    source_lineage_available: NOT_AVAILABLE
+    checksum_available: PARTIAL
+    single_file_download_supported: PARTIAL
+    include_exclude_supported: PARTIAL
+    streaming_supported: UNVERIFIED
+    minimum_download_unit: OpenSora.tar.gz
+    minimum_download_bytes: 1790760155
+    full_download_bytes: 230600827486
+    archive_layout_known: VERIFIED
+    extracted_layout_known: UNVERIFIED
+    small_sample_selection_possible: BLOCKED
+    small_sample_selection_without_test_possible: BLOCKED
+    formal_schema_mapping_possible: BLOCKED
+    license_status: VERIFIED
+    schema_status: BLOCKED
+    download_status: BLOCKED
+    blocking_items:
+      - no_record_level_metadata
+      - no_official_split
+      - no_record_label_generator_or_real_source
+      - protected_mode_2_and_approval_mode_1
+      - archive_only_media_granularity
+    recommended_role: DEFERRED_DATASET
+    selection_status: candidate
+    data_downloaded: false
+    production_adapter_ready: false
+    official_schema_verified: false
+    scores: {A: 2, B: 1, C: 0, D: 4, E: 4, F: 0, G: 1, H: 0, I: 4, J: 0}
+    formal_mapping:
+      sample_id: UNRESOLVED_SCHEMA
+      video_path: UNRESOLVED_SCHEMA
+      label: UNRESOLVED_SCHEMA
+      split: UNRESOLVED_SCHEMA
+      source_dataset: VERIFIED
+      source_id: UNRESOLVED_SCHEMA
+      source_lineage: UNRESOLVED_SCHEMA
+      generator: UNRESOLVED_SCHEMA
+      is_real: UNRESOLVED_SCHEMA
+      temporal_annotation: UNRESOLVED_SCHEMA
+      spatial_annotation: UNRESOLVED_SCHEMA
+      metadata_status: VERIFIED
+
+  - dataset_id: genvidbench
+    dataset_name: GenVidBench
+    task_scope:
+      - video_level_real_fake_detection
+      - cross_source_generalization
+      - cross_generator_generalization
+    official_repository: https://github.com/genvidbench/GenVidBench
+    official_dataset_host: https://huggingface.co/datasets/jian-0/GenVidBench
+    official_paper: https://arxiv.org/abs/2501.11340
+    repository_revision: de027df4d1b424eb6575aae36eaaf6f790a813b3
+    dataset_revision: 701cafb6f999d7ea0cbf3c354df6177311a4d824
+    license: CC-BY-NC-4.0_dataset_Apache-2.0_code_mixed_VidProM_upstream
+    terms_acceptance_required: NOT_APPLICABLE
+    access_approval_required: NOT_APPLICABLE
+    commercial_use: BLOCKED
+    record_metadata_available: PARTIAL
+    metadata_filename:
+      - GenVidBench/Pair1_labels.txt
+      - GenVidBench/Pair2_labels.txt
+      - GenVidBench/prompt_and_semantic_label/*.txt
+      - VidProM_unique.csv
+    metadata_format: whitespace_path_label_plus_CSV
+    metadata_record_count: 141995
+    sample_id_field: relative_video_path
+    video_path_field: first_whitespace_delimited_token
+    label_field: second_whitespace_delimited_token
+    label_values: {"0": real, "1": fake}
+    is_real_field: derived_from_verified_binary_label
+    generator_field: NOT_AVAILABLE
+    real_source_field: NOT_AVAILABLE
+    prompt_field: VidProM_unique.csv.prompt
+    official_split_available: VERIFIED
+    split_field: pair_membership_declared_by_paper_not_row_field
+    split_values: {Pair1: train, Pair2: test}
+    train_count: 74135
+    validation_count: NOT_AVAILABLE
+    test_count: 67860
+    temporal_annotation_available: NOT_AVAILABLE
+    temporal_annotation_format: NOT_AVAILABLE
+    spatial_annotation_available: NOT_AVAILABLE
+    spatial_annotation_format: NOT_AVAILABLE
+    mask_available: NOT_AVAILABLE
+    source_lineage_available: PARTIAL
+    checksum_available: PARTIAL
+    single_file_download_supported: PARTIAL
+    include_exclude_supported: PARTIAL
+    streaming_supported: UNVERIFIED
+    minimum_download_unit: VidProM/ms_videos/ms_videos_30.tar
+    minimum_download_bytes: 3205120
+    full_download_bytes: 3405935549489
+    archive_layout_known: VERIFIED
+    extracted_layout_known: UNVERIFIED
+    small_sample_selection_possible: PARTIAL
+    small_sample_selection_without_test_possible: BLOCKED
+    formal_schema_mapping_possible: PARTIAL
+    license_status: PARTIAL
+    schema_status: PARTIAL
+    download_status: BLOCKED
+    blocking_items:
+      - released_labels_cover_141995_not_all_6784490_paper_records
+      - no_validation_split
+      - media_is_archive_only
+      - archive_members_have_no_published_tar_index
+      - balanced_real_media_requires_separate_large_source
+      - VidProM_per_source_license_must_be_preserved
+    recommended_role: SECONDARY_GENERALIZATION_DATASET
+    selection_status: candidate
+    data_downloaded: false
+    production_adapter_ready: false
+    official_schema_verified: false
+    scores: {A: 5, B: 1, C: 0, D: 5, E: 5, F: 3, G: 4, H: 1, I: 4, J: 2}
+    formal_mapping:
+      sample_id: PARTIAL
+      video_path: VERIFIED
+      label: VERIFIED
+      split: VERIFIED
+      source_dataset: VERIFIED
+      source_id: PARTIAL
+      source_lineage: PARTIAL
+      generator: UNRESOLVED_SCHEMA
+      is_real: VERIFIED
+      temporal_annotation: UNRESOLVED_SCHEMA
+      spatial_annotation: UNRESOLVED_SCHEMA
+      metadata_status: VERIFIED
+
+  - dataset_id: decof
+    dataset_name: DeCoF/GVF
+    task_scope:
+      - video_level_real_fake_detection
+      - temporal_artifact_research
+      - paired_real_generated_content
+    official_repository: https://github.com/LongMa-2025/DeCoF
+    official_dataset_host: https://drive.google.com/drive/folders/1X4Gw4hkWfka42IaBQ6ImkDTGAeA9Wlk4
+    official_paper: https://arxiv.org/abs/2402.02085
+    repository_revision: 5f73e8dc4f8cd9faeed07d767c9517e3f2c66044
+    dataset_revision: UNVERIFIED
+    license: NOT_AVAILABLE
+    terms_acceptance_required: UNVERIFIED
+    access_approval_required: NOT_APPLICABLE
+    commercial_use: UNVERIFIED
+    record_metadata_available: VERIFIED
+    metadata_filename:
+      - datas/prompts/data.json
+      - datas/split/train.json
+      - datas/split/val.json
+      - datas/split/test.json
+    metadata_format: JSONL_prompts_plus_plain_text_split_IDs
+    metadata_record_count: 964
+    sample_id_field: video_id
+    video_path_field: UNRESOLVED_SCHEMA
+    label_field: NOT_AVAILABLE
+    label_values: paired_real_and_fake_roles_declared_by_paper
+    is_real_field: NOT_AVAILABLE
+    generator_field: NOT_AVAILABLE
+    real_source_field: source
+    prompt_field: prompt
+    official_split_available: VERIFIED
+    split_field: membership_in_datas/split_files
+    split_values: {train: train, val: validation, test: test}
+    train_count: 771
+    validation_count: 96
+    test_count: 97
+    temporal_annotation_available: NOT_AVAILABLE
+    temporal_annotation_format: NOT_AVAILABLE
+    spatial_annotation_available: NOT_AVAILABLE
+    spatial_annotation_format: NOT_AVAILABLE
+    mask_available: NOT_AVAILABLE
+    source_lineage_available: PARTIAL
+    checksum_available: NOT_AVAILABLE
+    single_file_download_supported: PARTIAL
+    include_exclude_supported: NOT_AVAILABLE
+    streaming_supported: UNVERIFIED
+    minimum_download_unit: pika.zip
+    minimum_download_bytes: 57503339
+    full_download_bytes: 4486608169
+    archive_layout_known: VERIFIED
+    extracted_layout_known: UNVERIFIED
+    small_sample_selection_possible: PARTIAL
+    small_sample_selection_without_test_possible: BLOCKED
+    formal_schema_mapping_possible: PARTIAL
+    license_status: UNVERIFIED
+    schema_status: PARTIAL
+    download_status: BLOCKED
+    blocking_items:
+      - dataset_license_not_declared
+      - real_videos_not_distributed
+      - MSVD_and_MSRVTT_recovery_and_terms_not_verified
+      - generator_archives_mix_official_record_splits
+      - no_per_video_archive_member_index
+      - no_record_video_path_or_checksum
+    recommended_role: PRIMARY_DETECTION_DATASET
+    selection_status: candidate
+    data_downloaded: false
+    production_adapter_ready: false
+    official_schema_verified: false
+    scores: {A: 4, B: 3, C: 0, D: 5, E: 4, F: 5, G: 5, H: 2, I: 1, J: 3}
+    formal_mapping:
+      sample_id: VERIFIED
+      video_path: UNRESOLVED_SCHEMA
+      label: PARTIAL
+      split: VERIFIED
+      source_dataset: VERIFIED
+      source_id: VERIFIED
+      source_lineage: PARTIAL
+      generator: UNRESOLVED_SCHEMA
+      is_real: PARTIAL
+      temporal_annotation: UNRESOLVED_SCHEMA
+      spatial_annotation: UNRESOLVED_SCHEMA
+      metadata_status: VERIFIED
+
+  - dataset_id: brokenvideos
+    dataset_name: BrokenVideos
+    task_scope:
+      - fine_grained_artifact_localization
+      - video_artifact_segmentation
+      - normal_region_discrimination
+    official_repository: https://github.com/Broken-Video-Detection-Datetsets/Broken-Video-Detection-Datasets.github.io
+    official_dataset_host: https://pan.baidu.com/s/1FQbUXuoPm3rOtamUzTtOWA?pwd=i38e
+    official_paper: https://arxiv.org/abs/2506.20103
+    repository_revision: 05d84bc87f9b25a895774b8136a8085ab96cbc00
+    dataset_revision: UNVERIFIED
+    license: NOT_AVAILABLE
+    terms_acceptance_required: UNVERIFIED
+    access_approval_required: UNVERIFIED
+    commercial_use: UNVERIFIED
+    record_metadata_available: NOT_AVAILABLE
+    metadata_filename: NOT_AVAILABLE
+    metadata_format: NOT_AVAILABLE
+    metadata_record_count: "PARTIAL: project page 3141; paper 3254"
+    sample_id_field: UNRESOLVED_SCHEMA
+    video_path_field: UNRESOLVED_SCHEMA
+    label_field: UNRESOLVED_SCHEMA
+    label_values: five_artifact_categories_declared_in_paper
+    is_real_field: NOT_APPLICABLE
+    generator_field: NOT_AVAILABLE
+    real_source_field: NOT_APPLICABLE
+    prompt_field: UNRESOLVED_SCHEMA
+    official_split_available: PARTIAL
+    split_field: UNRESOLVED_SCHEMA
+    split_values: "PARTIAL: paper experiment uses training and validation cohorts"
+    train_count: "PARTIAL: 3091 broken plus 748 clean in paper experiment"
+    validation_count: "PARTIAL: 150 broken plus 150 normal in paper experiment"
+    test_count: NOT_AVAILABLE
+    temporal_annotation_available: PARTIAL
+    temporal_annotation_format: frame_level_mask_presence_not_explicit_temporal_spans
+    spatial_annotation_available: VERIFIED
+    spatial_annotation_format: frame_level_pixel_mask_PNG
+    mask_available: VERIFIED
+    source_lineage_available: PARTIAL
+    checksum_available: NOT_AVAILABLE
+    single_file_download_supported: UNVERIFIED
+    include_exclude_supported: UNVERIFIED
+    streaming_supported: UNVERIFIED
+    minimum_download_unit: UNVERIFIED
+    minimum_download_bytes: UNVERIFIED
+    full_download_bytes: UNVERIFIED
+    archive_layout_known: UNVERIFIED
+    extracted_layout_known: UNVERIFIED
+    small_sample_selection_possible: BLOCKED
+    small_sample_selection_without_test_possible: BLOCKED
+    formal_schema_mapping_possible: BLOCKED
+    license_status: UNVERIFIED
+    schema_status: BLOCKED
+    download_status: BLOCKED
+    blocking_items:
+      - project_page_and_paper_video_counts_conflict
+      - no_downloadable_record_manifest_or_split_files_verified
+      - released_directory_layout_not_verified
+      - dataset_license_not_declared
+      - Baidu_download_listing_not_retrievable_in_audit_environment
+      - paper_experiment_clean_videos_not_verified_as_release_content
+    recommended_role: PRIMARY_SPATIAL_LOCALIZATION_DATASET
+    selection_status: candidate
+    data_downloaded: false
+    production_adapter_ready: false
+    official_schema_verified: false
+    scores: {A: 1, B: 4, C: 5, D: 4, E: 5, F: 2, G: 1, H: 0, I: 0, J: 1}
+    formal_mapping:
+      sample_id: UNRESOLVED_SCHEMA
+      video_path: UNRESOLVED_SCHEMA
+      label: UNRESOLVED_SCHEMA
+      split: UNRESOLVED_SCHEMA
+      source_dataset: VERIFIED
+      source_id: UNRESOLVED_SCHEMA
+      source_lineage: PARTIAL
+      generator: UNRESOLVED_SCHEMA
+      is_real: NOT_APPLICABLE
+      temporal_annotation: PARTIAL
+      spatial_annotation: PARTIAL
+      metadata_status: VERIFIED
