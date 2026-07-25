@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 from pathlib import Path
 
 from experiments.train import build_manifest_samples, train_residual_head
@@ -67,6 +68,8 @@ def _parser() -> argparse.ArgumentParser:
     train.add_argument("--manifest", required=True)
     train.add_argument("--config", default="configs/default.yaml")
     train.add_argument("--epochs", type=int, default=3, choices=(3, 4, 5))
+    train.add_argument("--output", required=True)
+    train.add_argument("--channel-schema", required=True)
     train.add_argument("--resume")
     return parser
 
@@ -74,8 +77,8 @@ def _parser() -> argparse.ArgumentParser:
 def main() -> int:
     arguments = _parser().parse_args()
     configure_logging(arguments.verbose)
-    pipeline, config = _pipeline(arguments.config)
     if arguments.command == "analyze":
+        pipeline, config = _pipeline(arguments.config)
         result = pipeline.analyze_video(
             arguments.video,
             max_frames=arguments.max_frames,
@@ -88,19 +91,30 @@ def main() -> int:
             heatmap_sigma=float(config["localization"]["heatmap_sigma"]),
         )
         return 0
-    samples = build_manifest_samples(arguments.manifest, pipeline)
-    if not samples["train"] or not samples["validation"]:
-        raise ValueError("Manifest requires non-empty train and validation splits.")
+    config_path = Path(arguments.config).resolve()
+    config = load_config(config_path)
+    validate_config(config)
+    bundle = build_manifest_samples(arguments.manifest, arguments.channel_schema)
+    config_sha256 = hashlib.sha256(config_path.read_bytes()).hexdigest()
+    if config_sha256 != bundle.config_sha256:
+        raise ValueError("Current config does not match the frozen residual manifest.")
     training = config["training"]
     train_residual_head(
-        samples["train"],
-        samples["validation"],
-        output_dir=resolve_path(config, training["checkpoint_dir"]),
+        bundle.samples["train"],
+        bundle.samples["validation"],
+        output_dir=arguments.output,
+        channel_schema=bundle.channel_schema,
+        source_commit=bundle.source_commit,
+        config_sha256=bundle.config_sha256,
         epochs=arguments.epochs,
         hidden_size=int(training["hidden_size"]),
         learning_rate=float(training["learning_rate"]),
+        weight_decay=float(training.get("weight_decay", 1e-4)),
+        batch_size=2,
+        random_seed=42,
         resume=arguments.resume,
         device=str(config["providers"]["device"]),
+        amp=True,
     )
     return 0
 
