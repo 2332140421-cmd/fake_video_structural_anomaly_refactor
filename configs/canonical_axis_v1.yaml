@@ -1,0 +1,105 @@
+schema_version: paper_core_canonical_axis_v1
+unit_system: meter
+frozen_before_real_video_run: true
+post_result_threshold_tuning: false
+authenticity_label_used: false
+universal_fallback: false
+
+source_runtime_dimension_match:
+  bottle:
+    ready: true
+    source_field: Sequence.objects[].scale[1]
+    source_coordinate_convention: Object-local y is the oriented 3D box top-to-bottom axis; object rotation maps it into the world frame, whose +y is gravity-up.
+    source_dimension_axis: object_local_y_top_to_bottom
+    source_dimension_definition: Bottle oriented-box base-to-cap physical extent in meters.
+    runtime_axis_source: robust_visible_surface_pca_3d_primary_axis
+    runtime_dimension_definition: Bottle base-to-cap principal physical extent, independent of image orientation.
+    match_evidence: Objectron object.proto scale-in-meter contract, official Parse Annotations box-axis diagram, and the frozen 212-instance y-dominant train annotation derivation.
+
+thresholds:
+  bottle_eigenvalue_ratio_min: 2.0
+  bottle_extent_ratio_min: 1.8
+  bottle_point_support_min: 20
+  bottle_depth_coverage_min: 0.5
+  bottle_axis_stability_min: 0.6
+  bottle_track_axis_compatibility_min: 0.8
+  bottle_track_extent_log_delta_max: 0.4
+  bottle_mask_quality_min: 0.3
+  truncation_threshold: 0.0
+  occlusion_threshold: 0.5
+  robust_projection_low_quantile: 0.05
+  robust_projection_high_quantile: 0.95
+
+threshold_metadata:
+  bottle_eigenvalue_ratio_min:
+    unit: dimensionless_ratio
+    meaning: Minimum first-to-second covariance eigenvalue ratio for a dominant physical axis.
+    default_source: Existing B2.2B engineering definition.
+    existing_engineering_definition: true
+    conservative_preregistered: false
+  bottle_extent_ratio_min:
+    unit: dimensionless_ratio
+    meaning: Minimum robust primary-to-largest-secondary projection-extent ratio.
+    default_source: Existing B2.2B engineering definition.
+    existing_engineering_definition: true
+    conservative_preregistered: false
+  bottle_point_support_min:
+    unit: valid_metric_points
+    meaning: Minimum visible-surface metric point support for PCA.
+    default_source: Existing M3/B2.2B metric-object engineering definition.
+    existing_engineering_definition: true
+    conservative_preregistered: false
+  bottle_depth_coverage_min:
+    unit: fraction
+    meaning: Minimum valid metric-depth fraction within the instance mask.
+    default_source: Existing paper-core metric object semantic gate.
+    existing_engineering_definition: true
+    conservative_preregistered: false
+  bottle_axis_stability_min:
+    unit: dimensionless_score
+    meaning: Minimum geometric stability score from bounded eigenvalue and extent dominance.
+    default_source: Conservative B2.2C preregistration before compliant smoke20.
+    existing_engineering_definition: false
+    conservative_preregistered: true
+  bottle_track_axis_compatibility_min:
+    unit: absolute_cosine
+    meaning: Minimum absolute cosine between consecutive accepted same-track bottle axes.
+    default_source: Existing B2.2B engineering definition.
+    existing_engineering_definition: true
+    conservative_preregistered: false
+  bottle_track_extent_log_delta_max:
+    unit: absolute_log_meter_ratio
+    meaning: Maximum same-track log change between consecutive accepted robust extents.
+    default_source: Existing B2.2B engineering definition.
+    existing_engineering_definition: true
+    conservative_preregistered: false
+  bottle_mask_quality_min:
+    unit: fraction
+    meaning: Minimum instance-mask provider quality.
+    default_source: Existing paper-core object semantic gate.
+    existing_engineering_definition: true
+    conservative_preregistered: false
+  truncation_threshold:
+    unit: border_contact_fraction
+    meaning: Maximum allowed visible-mask border contact; zero requires no border contact.
+    default_source: Existing B2.2B strict no-truncation rule.
+    existing_engineering_definition: true
+    conservative_preregistered: false
+  occlusion_threshold:
+    unit: fraction
+    meaning: Maximum allowed object occlusion ratio.
+    default_source: Existing paper-core object semantic gate.
+    existing_engineering_definition: true
+    conservative_preregistered: false
+  robust_projection_low_quantile:
+    unit: quantile
+    meaning: Lower robust projection quantile for physical extent.
+    default_source: Existing M3 metric visible-surface estimator.
+    existing_engineering_definition: true
+    conservative_preregistered: false
+  robust_projection_high_quantile:
+    unit: quantile
+    meaning: Upper robust projection quantile for physical extent.
+    default_source: Existing M3 metric visible-surface estimator.
+    existing_engineering_definition: true
+    conservative_preregistered: false

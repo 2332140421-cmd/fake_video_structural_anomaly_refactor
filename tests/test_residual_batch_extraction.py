@@ -151,6 +151,8 @@ def test_scale_prior_provenance_reaches_summary_and_final_manifest(tmp_path):
             "scale_prior_schema_version": "paper_core_scale_priors_v1",
             "scale_prior_sha256": "prior-hash",
             "scale_prior_source_table_sha256": "source-hash",
+            "canonical_axis_schema_version": "paper_core_canonical_axis_v1",
+            "canonical_threshold_config_sha256": "canonical-hash",
             "scale_prior_entry_id": ["entry"],
             "scale_prior_confidence": {"entry": "high"},
         }
@@ -180,6 +182,11 @@ def test_scale_prior_provenance_reaches_summary_and_final_manifest(tmp_path):
     )
     assert summary["scale_prior_sha256"] == "prior-hash"
     assert summary["scale_prior_source_table_sha256"] == "source-hash"
+    assert (
+        summary["canonical_axis_schema_version"]
+        == "paper_core_canonical_axis_v1"
+    )
+    assert summary["canonical_threshold_config_sha256"] == "canonical-hash"
     assert json.loads(summary["scale_prior_entry_id"]) == ["entry"]
 
     fake = {**member, "sample_id": "sample-fake", "label": "1"}
@@ -197,6 +204,9 @@ def test_scale_prior_provenance_reaches_summary_and_final_manifest(tmp_path):
     assert {row["scale_prior_sha256"] for row in rows} == {"prior-hash"}
     assert {row["scale_prior_source_table_sha256"] for row in rows} == {
         "source-hash"
+    }
+    assert {row["canonical_threshold_config_sha256"] for row in rows} == {
+        "canonical-hash"
     }
 
 

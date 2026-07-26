@@ -57,6 +57,9 @@ def _pipeline(config_path: str | Path) -> tuple[ForgeryAnalysisPipeline, dict]:
     config["object_semantic"]["prior_path"] = str(
         resolve_path(config, config["object_semantic"]["prior_path"])
     )
+    config["object_semantic"]["canonical_axis_path"] = str(
+        resolve_path(config, config["object_semantic"]["canonical_axis_path"])
+    )
     pose = LegacyPoseProviderAdapter()
     return (
         ForgeryAnalysisPipeline(

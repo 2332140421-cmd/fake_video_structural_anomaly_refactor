@@ -53,6 +53,17 @@ class ScalePriorRegistry:
         return self.unsupported_by_label.get(category, "")
 
 
+@dataclass(frozen=True)
+class CanonicalAxisRegistry:
+    schema_version: str
+    config_sha256: str
+    thresholds: Mapping[str, float]
+    bottle_source_runtime_dimension_match: bool
+    bottle_source_field: str
+    bottle_source_dimension_definition: str
+    bottle_runtime_dimension_definition: str
+
+
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -187,6 +198,112 @@ def load_metric_priors(path: str | Path) -> dict[str, MetricPrior]:
     return dict(load_scale_prior_registry(path).priors_by_label)
 
 
+_CANONICAL_THRESHOLD_NAMES = frozenset(
+    {
+        "bottle_eigenvalue_ratio_min",
+        "bottle_extent_ratio_min",
+        "bottle_point_support_min",
+        "bottle_depth_coverage_min",
+        "bottle_axis_stability_min",
+        "bottle_track_axis_compatibility_min",
+        "bottle_track_extent_log_delta_max",
+        "bottle_mask_quality_min",
+        "truncation_threshold",
+        "occlusion_threshold",
+        "robust_projection_low_quantile",
+        "robust_projection_high_quantile",
+    }
+)
+
+
+def load_canonical_axis_registry(path: str | Path) -> CanonicalAxisRegistry:
+    config_path = Path(path)
+    payload = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    if payload.get("schema_version") != "paper_core_canonical_axis_v1":
+        raise ValueError("Unsupported canonical-axis schema; formal v1 is required.")
+    if payload.get("unit_system") != "meter":
+        raise ValueError("Canonical-axis unit_system must be exactly 'meter'.")
+    if payload.get("frozen_before_real_video_run") is not True:
+        raise ValueError("Canonical-axis thresholds must be frozen before real-video use.")
+    if payload.get("post_result_threshold_tuning") is not False:
+        raise ValueError("Post-result canonical-axis threshold tuning is forbidden.")
+    if payload.get("authenticity_label_used") is not False:
+        raise ValueError("Canonical-axis configuration must be label blind.")
+    if payload.get("universal_fallback") is not False:
+        raise ValueError("Canonical-axis configuration cannot enable a universal fallback.")
+
+    raw_thresholds = payload.get("thresholds")
+    if not isinstance(raw_thresholds, Mapping):
+        raise ValueError("Canonical-axis thresholds must be a mapping.")
+    missing = sorted(_CANONICAL_THRESHOLD_NAMES - set(raw_thresholds))
+    extra = sorted(set(raw_thresholds) - _CANONICAL_THRESHOLD_NAMES)
+    if missing or extra:
+        raise ValueError(
+            f"Canonical-axis threshold keys mismatch: missing={missing}, extra={extra}."
+        )
+    thresholds = {name: float(raw_thresholds[name]) for name in raw_thresholds}
+    positive = _CANONICAL_THRESHOLD_NAMES - {"truncation_threshold"}
+    if any(
+        not math.isfinite(thresholds[name]) or thresholds[name] <= 0.0
+        for name in positive
+    ):
+        raise ValueError("Canonical-axis positive thresholds must be finite and > 0.")
+    if (
+        not math.isfinite(thresholds["truncation_threshold"])
+        or thresholds["truncation_threshold"] < 0.0
+    ):
+        raise ValueError("truncation_threshold must be finite and non-negative.")
+    for name in (
+        "bottle_depth_coverage_min",
+        "bottle_axis_stability_min",
+        "bottle_track_axis_compatibility_min",
+        "bottle_mask_quality_min",
+        "truncation_threshold",
+        "occlusion_threshold",
+        "robust_projection_low_quantile",
+        "robust_projection_high_quantile",
+    ):
+        if thresholds[name] > 1.0:
+            raise ValueError(f"Canonical-axis threshold {name!r} must be <= 1.")
+    if not (
+        0.0
+        <= thresholds["robust_projection_low_quantile"]
+        < thresholds["robust_projection_high_quantile"]
+        <= 1.0
+    ):
+        raise ValueError("Canonical-axis robust projection quantiles are invalid.")
+    metadata = payload.get("threshold_metadata")
+    if not isinstance(metadata, Mapping) or set(metadata) != _CANONICAL_THRESHOLD_NAMES:
+        raise ValueError("Every canonical-axis threshold requires metadata.")
+
+    bottle = (payload.get("source_runtime_dimension_match") or {}).get("bottle")
+    if not isinstance(bottle, Mapping):
+        raise ValueError("Bottle source/runtime dimension audit is required.")
+    source_field = str(bottle.get("source_field", ""))
+    source_definition = str(bottle.get("source_dimension_definition", ""))
+    runtime_definition = str(bottle.get("runtime_dimension_definition", ""))
+    required_text = (
+        source_field,
+        str(bottle.get("source_coordinate_convention", "")),
+        str(bottle.get("source_dimension_axis", "")),
+        source_definition,
+        str(bottle.get("runtime_axis_source", "")),
+        runtime_definition,
+        str(bottle.get("match_evidence", "")),
+    )
+    if any(not value.strip() for value in required_text):
+        raise ValueError("Bottle source/runtime dimension provenance is incomplete.")
+    return CanonicalAxisRegistry(
+        schema_version=str(payload["schema_version"]),
+        config_sha256=_sha256(config_path),
+        thresholds=MappingProxyType(thresholds),
+        bottle_source_runtime_dimension_match=bottle.get("ready") is True,
+        bottle_source_field=source_field,
+        bottle_source_dimension_definition=source_definition,
+        bottle_runtime_dimension_definition=runtime_definition,
+    )
+
+
 def _axis_extent(
     cloud: Any,
     dimension: str,
@@ -241,6 +358,178 @@ def _container_axis_evidence(cloud: Any) -> tuple[bool, dict[str, Any]]:
         "estimated_axis_extent_m": extent,
         "extent_quantiles": [float(cloud.quantile_low), float(cloud.quantile_high)],
         "threshold_role": "fixed_geometry_gate_not_fitted_on_video_labels",
+    }
+
+
+def _axis_config(config: CanonicalAxisRegistry, name: str) -> float:
+    return float(config.thresholds[name])
+
+
+def _visible_surface_xyz(cloud: Any) -> np.ndarray:
+    points = np.asarray(
+        [[point.x_m, point.y_m, point.z_m] for point in cloud.points if point.valid],
+        dtype=float,
+    )
+    if points.ndim != 2 or points.shape[1:] != (3,):
+        return np.empty((0, 3), dtype=float)
+    return points[np.isfinite(points).all(axis=1)]
+
+
+def _stable_vector(vector: np.ndarray) -> np.ndarray:
+    normalized = np.asarray(vector, dtype=float)
+    norm = float(np.linalg.norm(normalized))
+    if not math.isfinite(norm) or norm <= 0.0:
+        return np.full(3, float("nan"))
+    normalized = normalized / norm
+    pivot = int(np.argmax(np.abs(normalized)))
+    return normalized if normalized[pivot] >= 0.0 else -normalized
+
+
+def _pca3d_axis(cloud: Any, config: CanonicalAxisRegistry) -> dict[str, Any]:
+    """Describe all three robust visible-surface PCA axes without naming one canonical."""
+
+    points = _visible_surface_xyz(cloud)
+    if len(points) < 3:
+        return {
+            "valid": False,
+            "reason": "BOTTLE_AXIS_POINT_SUPPORT_INSUFFICIENT",
+            "axis_point_support": int(len(points)),
+        }
+    center = np.median(points, axis=0)
+    covariance = np.cov(points - center, rowvar=False)
+    if covariance.shape != (3, 3) or not np.isfinite(covariance).all():
+        return {
+            "valid": False,
+            "reason": "BOTTLE_AXIS_NUMERICALLY_UNSTABLE",
+            "axis_point_support": int(len(points)),
+        }
+    values, vectors = np.linalg.eigh(covariance)
+    order = np.argsort(values)[::-1]
+    eigenvalues = np.maximum(values[order], 0.0)
+    axes = np.asarray([_stable_vector(vectors[:, index]) for index in order])
+    if not np.isfinite(axes).all():
+        return {
+            "valid": False,
+            "reason": "BOTTLE_AXIS_NUMERICALLY_UNSTABLE",
+            "axis_point_support": int(len(points)),
+        }
+    projections = (points - center) @ axes.T
+    quantile_low = _axis_config(config, "robust_projection_low_quantile")
+    quantile_high = _axis_config(config, "robust_projection_high_quantile")
+    lows, highs = np.quantile(
+        projections,
+        [quantile_low, quantile_high],
+        axis=0,
+    )
+    extents = highs - lows
+    if not np.isfinite(extents).all() or extents[0] <= 0.0:
+        return {
+            "valid": False,
+            "reason": "BOTTLE_AXIS_NUMERICALLY_UNSTABLE",
+            "axis_point_support": int(len(points)),
+        }
+    eigenvalue_ratio = float(eigenvalues[0] / max(eigenvalues[1], 1e-12))
+    extent_ratio = float(extents[0] / max(extents[1], extents[2], 1e-12))
+    return {
+        "valid": True,
+        "reason": "",
+        "axis_source": "robust_visible_surface_pca_3d_primary_axis",
+        "axis_vector": [float(value) for value in axes[0]],
+        "axis_vectors": [[float(value) for value in axis] for axis in axes],
+        "axis_eigenvalues": [float(value) for value in eigenvalues],
+        "axis_extents_m": [float(value) for value in extents],
+        "principal_extent": float(extents[0]),
+        "secondary_extent": float(extents[1]),
+        "tertiary_extent": float(extents[2]),
+        "axis_eigenvalue_ratio": eigenvalue_ratio,
+        "axis_extent_ratio": extent_ratio,
+        "eigenvalue_ratio": eigenvalue_ratio,
+        "extent_ratio": extent_ratio,
+        "elongation_ratio": min(eigenvalue_ratio, extent_ratio),
+        "axis_point_support": int(len(points)),
+        "extent_quantiles": [quantile_low, quantile_high],
+        "visible_surface_only": True,
+    }
+
+
+def _bottle_height_axis(
+    cloud: Any,
+    config: CanonicalAxisRegistry,
+    history: list[tuple[np.ndarray, float]],
+) -> dict[str, Any]:
+    if not config.bottle_source_runtime_dimension_match:
+        return {
+            "valid": False,
+            "reason": "BOTTLE_SOURCE_RUNTIME_DIMENSION_MISMATCH",
+        }
+    diagnostics = _pca3d_axis(cloud, config)
+    if not diagnostics.get("valid"):
+        return diagnostics
+    if int(diagnostics["axis_point_support"]) < int(
+        _axis_config(config, "bottle_point_support_min")
+    ):
+        return {
+            **diagnostics,
+            "valid": False,
+            "reason": "BOTTLE_AXIS_POINT_SUPPORT_INSUFFICIENT",
+        }
+    if float(diagnostics["axis_eigenvalue_ratio"]) < _axis_config(
+        config, "bottle_eigenvalue_ratio_min"
+    ) or float(diagnostics["axis_extent_ratio"]) < _axis_config(
+        config, "bottle_extent_ratio_min"
+    ):
+        return {
+            **diagnostics,
+            "valid": False,
+            "reason": "BOTTLE_NOT_ELONGATED_IN_3D",
+        }
+    axis = np.asarray(diagnostics["axis_vector"], dtype=float)
+    extent = float(diagnostics["principal_extent"])
+    axis_stability = min(
+        float(diagnostics["axis_eigenvalue_ratio"])
+        / (float(diagnostics["axis_eigenvalue_ratio"]) + 1.0),
+        float(diagnostics["axis_extent_ratio"])
+        / (float(diagnostics["axis_extent_ratio"]) + 1.0),
+    )
+    diagnostics["axis_stability"] = axis_stability
+    if axis_stability < _axis_config(config, "bottle_axis_stability_min"):
+        return {
+            **diagnostics,
+            "valid": False,
+            "reason": "BOTTLE_AXIS_UNSTABLE",
+        }
+    if history:
+        previous_axis, previous_extent = history[-1]
+        compatibility = abs(float(np.dot(axis, previous_axis)))
+        diagnostics["track_axis_compatibility"] = compatibility
+        if compatibility < _axis_config(
+            config, "bottle_track_axis_compatibility_min"
+        ):
+            return {
+                **diagnostics,
+                "valid": False,
+                "reason": "BOTTLE_TRACK_AXIS_INCOMPATIBLE",
+            }
+        if abs(math.log(extent) - math.log(previous_extent)) > _axis_config(
+            config, "bottle_track_extent_log_delta_max"
+        ):
+            return {
+                **diagnostics,
+                "valid": False,
+                "reason": "BOTTLE_TRACK_SIZE_INCOMPATIBLE",
+            }
+    history.append((axis, extent))
+    return {
+        **diagnostics,
+        "valid": True,
+        "axis_quality": min(
+            1.0,
+            axis_stability,
+            float(cloud.valid_point_ratio),
+            float(cloud.depth_quality),
+        ),
+        "estimated_size_m": extent,
+        "canonical_mapping_rule": "exact_bottle_dominant_visible_surface_pca3d_to_height_v1",
     }
 
 
@@ -350,6 +639,8 @@ def _dimension_observability(
     obj: Any,
     cloud: Any,
     mask_support: Mapping[str, Any],
+    canonical_axis_config: CanonicalAxisRegistry,
+    bottle_history: list[tuple[np.ndarray, float]],
 ) -> dict[str, dict[str, Any]]:
     container_axis, axis_diagnostics = _container_axis_evidence(cloud)
     viewpoint = _viewpoint(obj.viewpoint)
@@ -382,59 +673,103 @@ def _dimension_observability(
             },
         )
     )
-    height_observable = bool(view.height_observable and container_axis)
-    flags = {
-        "height": height_observable,
-        "width": bool(view.width_observable),
-        "length": bool(view.length_observable),
-    }
-    axis_sources = {
-        "height": (
-            "robust_metric_surface_principal_axis_xy"
-            if container_axis
-            else ""
-        ),
-        "width": (
-            "camera_x_visible_extent_with_frontal_view"
-            if view.width_observable
-            else ""
-        ),
-        "length": (
-            "camera_x_visible_extent_with_lateral_view"
-            if view.length_observable
-            else ""
-        ),
-    }
-    reason_keys = {"height": "height_m", "width": "width_m", "length": "length_m"}
-    records: dict[str, dict[str, Any]] = {}
-    for dimension in ("height", "width", "length"):
-        reasons = list(view.dimension_reasons.get(reason_keys[dimension], ()))
-        if dimension == "height" and not container_axis:
-            reasons.append("no_reliable_dimension_aligned_metric_axis")
-        records[dimension] = {
+    records = {
+        dimension: {
             "dimension": dimension,
-            "observable": flags[dimension],
-            "reason": "" if flags[dimension] else "|".join(dict.fromkeys(reasons)),
-            "axis_source": axis_sources[dimension],
-            "estimated_size_m": (
-                _axis_extent(cloud, dimension, obj.viewpoint, axis_diagnostics)
-                if flags[dimension]
-                else float("nan")
-            ),
+            "canonical_dimension": dimension,
+            "observable": False,
+            "reason": "CANONICAL_MAPPING_UNAVAILABLE",
+            "axis_source": "",
+            "axis_vector": [],
+            "axis_quality": 0.0,
+            "canonical_mapping_rule": "",
+            "estimated_size_m": float("nan"),
             "prior_min_m": float("nan"),
             "prior_max_m": float("nan"),
             "residual": float("nan"),
             "confidence": 0.0,
-            "viewpoint_evidence": (
-                view.viewpoint_class != ViewpointClass.UNKNOWN
-                or view.pose_estimate_status != PoseEstimateStatus.UNAVAILABLE
-            ),
+            "viewpoint_evidence": False,
             "viewpoint_class": view.viewpoint_class.value,
             "pose_estimate_status": view.pose_estimate_status.value,
             "visible_surface_only": True,
-            "axis_diagnostics": axis_diagnostics if dimension == "height" else {},
+            "axis_diagnostics": {},
             "mask_support": dict(mask_support),
         }
+        for dimension in ("height", "width", "length")
+    }
+    if obj.category == "person":
+        records["height"].update(
+            {
+                "reason": "PERSON_POSE_PROVIDER_MISSING",
+                "axis_diagnostics": {
+                    "valid": False,
+                    "reason": "PERSON_POSE_PROVIDER_MISSING",
+                    "active_path_keypoint_provider": False,
+                    "bbox_height_used": False,
+                    "mask_image_axis_used": False,
+                    "human_ratio_extrapolation_used": False,
+                },
+                "pose_axis_source": "",
+                "pose_keypoint_support": {},
+                "upright_status": "unavailable",
+            }
+        )
+    elif obj.category == "bottle":
+        if (
+            obj.truncated
+            or view.border_contact_ratio
+            > _axis_config(canonical_axis_config, "truncation_threshold")
+        ):
+            bottle = {"valid": False, "reason": "BOTTLE_TRUNCATED"}
+        else:
+            bottle = _bottle_height_axis(
+                cloud,
+                canonical_axis_config,
+                bottle_history,
+            )
+        records["height"].update(
+            {
+                "observable": bool(bottle.get("valid")),
+                "reason": "" if bottle.get("valid") else str(bottle["reason"]),
+                "axis_source": str(bottle.get("axis_source", "")),
+                "axis_vector": list(bottle.get("axis_vector", ())),
+                "axis_quality": float(bottle.get("axis_quality", 0.0)),
+                "canonical_mapping_rule": str(
+                    bottle.get("canonical_mapping_rule", "")
+                ),
+                "estimated_size_m": float(
+                    bottle.get("estimated_size_m", float("nan"))
+                ),
+                "viewpoint_evidence": bool(bottle.get("valid")),
+                "axis_diagnostics": dict(bottle),
+                "principal_extent": float(
+                    bottle.get("principal_extent", float("nan"))
+                ),
+                "secondary_extent": float(
+                    bottle.get("secondary_extent", float("nan"))
+                ),
+                "eigenvalue_ratio": float(
+                    bottle.get("eigenvalue_ratio", float("nan"))
+                ),
+                "extent_ratio": float(
+                    bottle.get("extent_ratio", float("nan"))
+                ),
+                "axis_point_support": int(
+                    bottle.get("axis_point_support", 0)
+                ),
+                "axis_stability": float(
+                    bottle.get("axis_stability", float("nan"))
+                ),
+                "elongation_ratio": float(
+                    bottle.get("elongation_ratio", float("nan"))
+                ),
+            }
+        )
+    elif obj.category == "car":
+        records["length"]["reason"] = "CAR_INDEPENDENT_VIEWPOINT_AXIS_UNAVAILABLE"
+        records["length"]["canonical_mapping_rule"] = (
+            "car_length_requires_independent_longitudinal_lateral_vertical_axes_v1"
+        )
     principal_observable = bool(
         container_axis
         and view.valid
@@ -443,6 +778,7 @@ def _dimension_observability(
     )
     records["principal_extent"] = {
         "dimension": "principal_extent",
+        "canonical_dimension": "",
         "observable": principal_observable,
         "reason": (
             ""
@@ -459,6 +795,17 @@ def _dimension_observability(
             if principal_observable
             else ""
         ),
+        "axis_vector": (
+            [*axis_diagnostics.get("axis_xy", ()), 0.0]
+            if principal_observable
+            else []
+        ),
+        "axis_quality": (
+            min(1.0, float(axis_diagnostics["axis_eigenvalue_ratio"]) / 1.25)
+            if principal_observable
+            else 0.0
+        ),
+        "canonical_mapping_rule": "none_generic_temporal_extent_only",
         "estimated_size_m": (
             float(axis_diagnostics["estimated_axis_extent_m"])
             if principal_observable
@@ -485,6 +832,8 @@ def _dimension_observability(
 
 def _unobservable_reason(record: Mapping[str, Any]) -> str:
     reason = str(record.get("reason", ""))
+    if reason and reason.upper() == reason:
+        return reason
     if "border_contact" in reason:
         return "dimension_truncated"
     if "no_reliable" in reason or "axis_not_verified" in reason:
@@ -498,13 +847,16 @@ def compute_object_semantic_residuals(
     clip: ClipObservation,
     *,
     prior_path: str | Path,
+    canonical_axis_path: str | Path,
     min_depth_coverage: float = 0.5,
     max_occlusion_ratio: float = 0.5,
     min_mask_quality: float = 0.3,
 ) -> list[ResidualEvidence]:
     registry = load_scale_prior_registry(prior_path)
+    canonical_axis = load_canonical_axis_registry(canonical_axis_path)
     output: list[ResidualEvidence] = []
     history: dict[tuple[str, str], list[tuple[int, float, float, str]]] = {}
+    bottle_histories: dict[str, list[tuple[np.ndarray, float]]] = {}
     for frame in clip.frames:
         for obj in frame.objects:
             mask_support = (
@@ -530,6 +882,7 @@ def compute_object_semantic_residuals(
             }
             base_meta: dict[str, Any] = {
                 "category": obj.category,
+                "class_name": obj.category,
                 "coordinate_frame": "camera_frame_metric",
                 "dimension_observability": [],
                 "old_object_pair_rsd_used": False,
@@ -541,7 +894,30 @@ def compute_object_semantic_residuals(
                 "scale_prior_source_table_sha256": registry.source_table_sha256,
                 "scale_prior_entry_id": "",
                 "scale_prior_confidence": "",
+                "canonical_axis_schema_version": canonical_axis.schema_version,
+                "canonical_threshold_config_sha256": canonical_axis.config_sha256,
+                "source_runtime_dimension_match": (
+                    canonical_axis.bottle_source_runtime_dimension_match
+                    if obj.category == "bottle"
+                    else None
+                ),
+                "objectron_source_field": (
+                    canonical_axis.bottle_source_field
+                    if obj.category == "bottle"
+                    else ""
+                ),
                 "legacy_container_upright_fallback_used": False,
+                "canonical_dimension": "",
+                "axis_source": "",
+                "axis_vector": [],
+                "axis_quality": 0.0,
+                "canonical_mapping_rule": "",
+                "estimated_size_m": float("nan"),
+                "prior_min_m": float("nan"),
+                "prior_max_m": float("nan"),
+                "residual": float("nan"),
+                "confidence": 0.0,
+                "visible_surface_only": True,
             }
             prior = registry.resolve(obj.category)
             if prior is not None:
@@ -553,32 +929,67 @@ def compute_object_semantic_residuals(
                     }
                 )
             unsupported = registry.unsupported_reason(obj.category)
+            object_min_depth_coverage = (
+                _axis_config(canonical_axis, "bottle_depth_coverage_min")
+                if obj.category == "bottle"
+                else min_depth_coverage
+            )
+            object_max_occlusion_ratio = (
+                _axis_config(canonical_axis, "occlusion_threshold")
+                if obj.category == "bottle"
+                else max_occlusion_ratio
+            )
+            object_min_mask_quality = (
+                _axis_config(canonical_axis, "bottle_mask_quality_min")
+                if obj.category == "bottle"
+                else min_mask_quality
+            )
 
             common_reason = ""
             if obj.instance_mask is None or not np.any(obj.instance_mask):
                 common_reason = "instance_mask_unavailable"
             elif not bool(mask_support["valid"]):
                 common_reason = str(mask_support["reason"])
-            elif obj.occlusion_ratio > max_occlusion_ratio:
+            elif obj.occlusion_ratio > object_max_occlusion_ratio:
                 common_reason = "severe_object_occlusion"
-            elif obj.mask_quality < min_mask_quality:
+            elif obj.mask_quality < object_min_mask_quality:
                 common_reason = "insufficient_mask_quality"
             elif not obj.track_identity_stable:
                 common_reason = "unstable_track_identity"
-            cloud = None if common_reason else build_metric_object_surface(frame, obj)
+            cloud = (
+                None
+                if common_reason
+                else build_metric_object_surface(
+                    frame,
+                    obj,
+                    quantile_low=_axis_config(
+                        canonical_axis, "robust_projection_low_quantile"
+                    ),
+                    quantile_high=_axis_config(
+                        canonical_axis, "robust_projection_high_quantile"
+                    ),
+                )
+            )
             if not common_reason and (cloud is None or not cloud.valid):
                 common_reason = "metric_object_surface_unavailable"
             if (
                 not common_reason
                 and cloud is not None
                 and cloud.valid_point_ratio
-                < min_depth_coverage
+                < object_min_depth_coverage
             ):
                 common_reason = "insufficient_valid_metric_depth_ratio"
             dimensions = (
                 {}
                 if cloud is None or not cloud.valid
-                else _dimension_observability(frame, obj, cloud, mask_support)
+                else _dimension_observability(
+                    frame,
+                    obj,
+                    cloud,
+                    mask_support,
+                    canonical_axis,
+                    bottle_histories.setdefault(obj.track_id, []),
+                )
             )
             base_meta.update(
                 {
@@ -592,7 +1003,9 @@ def compute_object_semantic_residuals(
             )
 
             prior_reason = common_reason
-            if prior is None:
+            if prior is not None and obj.category == "person":
+                prior_reason = "PERSON_POSE_PROVIDER_MISSING"
+            elif prior is None:
                 prior_reason = (
                     "category_too_broad_without_subtype"
                     if unsupported
@@ -602,7 +1015,7 @@ def compute_object_semantic_residuals(
                 not prior_reason
                 and cloud is not None
                 and cloud.valid_point_ratio
-                < max(min_depth_coverage, prior.minimum_observability)
+                < max(object_min_depth_coverage, prior.minimum_observability)
             ):
                 prior_reason = "insufficient_valid_metric_depth_ratio"
             if prior is not None and prior.dimension in dimensions:
@@ -614,10 +1027,35 @@ def compute_object_semantic_residuals(
                 base_meta.update(
                     {
                         "dimension": prior.dimension,
+                        "canonical_dimension": prior.dimension,
                         "axis_source": selected["axis_source"],
+                        "axis_vector": list(selected.get("axis_vector", ())),
+                        "axis_quality": float(selected.get("axis_quality", 0.0)),
+                        "canonical_mapping_rule": str(
+                            selected.get("canonical_mapping_rule", "")
+                        ),
+                        "estimated_size_m": float(
+                            selected.get("estimated_size_m", float("nan"))
+                        ),
+                        "prior_min_m": prior.min_meters,
+                        "prior_max_m": prior.max_meters,
                         "observability_reason": selected["reason"],
                     }
                 )
+                for name in (
+                    "pose_axis_source",
+                    "pose_keypoint_support",
+                    "upright_status",
+                    "principal_extent",
+                    "secondary_extent",
+                    "eigenvalue_ratio",
+                    "extent_ratio",
+                    "axis_point_support",
+                    "axis_stability",
+                    "elongation_ratio",
+                ):
+                    if name in selected:
+                        base_meta[name] = selected[name]
             base_meta["dimension_observability"] = list(dimensions.values())
             if prior_reason:
                 output.append(
@@ -644,6 +1082,7 @@ def compute_object_semantic_residuals(
                     obj.mask_quality,
                     cloud.depth_quality,
                     cloud.valid_point_ratio,
+                    float(selected["axis_quality"]),
                 )
                 selected.update(
                     {
@@ -656,11 +1095,15 @@ def compute_object_semantic_residuals(
                 metadata = {
                     **base_meta,
                     "dimension": prior.dimension,
+                    "canonical_dimension": prior.dimension,
                     "observable": True,
                     "observability_reason": (
                         "dimension_axis_and_visible_metric_surface_supported"
                     ),
                     "axis_source": selected["axis_source"],
+                    "axis_vector": list(selected["axis_vector"]),
+                    "axis_quality": float(selected["axis_quality"]),
+                    "canonical_mapping_rule": selected["canonical_mapping_rule"],
                     "estimated_size_m": estimate,
                     "prior_min_m": prior.min_meters,
                     "prior_max_m": prior.max_meters,
@@ -669,7 +1112,23 @@ def compute_object_semantic_residuals(
                     "excluded_scope": prior.excluded_scope,
                     "visible_surface_only": True,
                     "world_frame_claimed": False,
+                    "residual": residual,
+                    "confidence": confidence,
                 }
+                for name in (
+                    "pose_axis_source",
+                    "pose_keypoint_support",
+                    "upright_status",
+                    "principal_extent",
+                    "secondary_extent",
+                    "eigenvalue_ratio",
+                    "extent_ratio",
+                    "axis_point_support",
+                    "axis_stability",
+                    "elongation_ratio",
+                ):
+                    if name in selected:
+                        metadata[name] = selected[name]
                 output.append(
                     ResidualEvidence.observed(
                         "semantic_metric_prior",
@@ -689,7 +1148,7 @@ def compute_object_semantic_residuals(
                 temporal_record = next(
                     (
                         dimensions[name]
-                        for name in ("height", "width", "length", "principal_extent")
+                        for name in ("principal_extent", "height", "width", "length")
                         if bool(dimensions[name]["observable"])
                     ),
                     None,

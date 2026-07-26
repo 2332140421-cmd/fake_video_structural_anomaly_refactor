@@ -23,6 +23,7 @@ from models.geometry import predict_target_positions
 from models.motion_residuals import compute_motion_residuals
 from models.object_semantic import (
     compute_object_semantic_residuals,
+    load_canonical_axis_registry,
     load_scale_prior_registry,
 )
 from models.providers import DepthIntrinsicsProvider, ObjectProvider, PoseProvider, TrackProvider
@@ -213,6 +214,7 @@ class ForgeryAnalysisPipeline:
         residuals = compute_object_semantic_residuals(
             clip,
             prior_path=semantic_config["prior_path"],
+            canonical_axis_path=semantic_config["canonical_axis_path"],
             min_depth_coverage=float(semantic_config.get("min_depth_coverage", 0.5)),
             max_occlusion_ratio=float(semantic_config.get("max_occlusion_ratio", 0.5)),
             min_mask_quality=float(semantic_config.get("min_mask_quality", 0.3)),
@@ -249,6 +251,9 @@ class ForgeryAnalysisPipeline:
         objects = [obj for frame in frames for obj in frame.objects]
         prior_registry = load_scale_prior_registry(
             self.config["object_semantic"]["prior_path"]
+        )
+        canonical_axis_registry = load_canonical_axis_registry(
+            self.config["object_semantic"]["canonical_axis_path"]
         )
         min_mask_quality = float(
             self.config["object_semantic"].get("min_mask_quality", 0.3)
@@ -327,6 +332,22 @@ class ForgeryAnalysisPipeline:
             )
             for row in semantic_rows
         )
+        objects_with_canonical_axis = sum(
+            any(
+                record.get("dimension") in {"height", "width", "length"}
+                and bool(record.get("observable", False))
+                and bool(record.get("canonical_mapping_rule"))
+                for record in row.metadata.get("dimension_observability", ())
+            )
+            for row in semantic_rows
+        )
+        canonical_failure_reasons: dict[str, int] = {}
+        for row in semantic_rows:
+            if row.valid_mask or not row.metadata.get("scale_prior_entry_id"):
+                continue
+            canonical_failure_reasons[row.reason] = (
+                canonical_failure_reasons.get(row.reason, 0) + 1
+            )
         unavailable_reason_map = {
             "missing_category_metric_prior": "NO_SCALE_PRIOR",
             "category_too_broad_without_subtype": (
@@ -517,6 +538,15 @@ class ForgeryAnalysisPipeline:
                 "scale_prior_source_table_sha256": (
                     prior_registry.source_table_sha256
                 ),
+                "canonical_axis_schema_version": (
+                    canonical_axis_registry.schema_version
+                ),
+                "canonical_threshold_config_sha256": (
+                    canonical_axis_registry.config_sha256
+                ),
+                "bottle_source_runtime_dimension_match": (
+                    canonical_axis_registry.bottle_source_runtime_dimension_match
+                ),
                 "scale_prior_entry_id": sorted(
                     {
                         str(row.metadata["scale_prior_entry_id"])
@@ -550,6 +580,7 @@ class ForgeryAnalysisPipeline:
                         obj.occlusion_ratio <= max_occlusion_ratio for obj in objects
                     ),
                     "objects_with_dimension_axis": objects_with_dimension_axis,
+                    "objects_with_canonical_axis": objects_with_canonical_axis,
                     "objects_with_viewpoint_evidence": objects_with_viewpoint_evidence,
                     "objects_with_viewpoint_estimate": sum(
                         obj.viewpoint != "unknown" for obj in objects
@@ -578,6 +609,33 @@ class ForgeryAnalysisPipeline:
                         / objects_with_supported_prior_and_observable_dimension
                         if objects_with_supported_prior_and_observable_dimension
                         else float("nan")
+                    ),
+                },
+                "canonical_axis_summary": {
+                    "objects_with_canonical_axis": objects_with_canonical_axis,
+                    "person_total": sum(obj.category == "person" for obj in objects),
+                    "person_height_available": sum(
+                        row.valid_mask
+                        and row.metadata.get("class_name") == "person"
+                        and row.metadata.get("canonical_dimension") == "height"
+                        for row in semantic_rows
+                    ),
+                    "bottle_total": sum(obj.category == "bottle" for obj in objects),
+                    "bottle_height_available": sum(
+                        row.valid_mask
+                        and row.metadata.get("class_name") == "bottle"
+                        and row.metadata.get("canonical_dimension") == "height"
+                        for row in semantic_rows
+                    ),
+                    "car_total": sum(obj.category == "car" for obj in objects),
+                    "car_length_available": sum(
+                        row.valid_mask
+                        and row.metadata.get("class_name") == "car"
+                        and row.metadata.get("canonical_dimension") == "length"
+                        for row in semantic_rows
+                    ),
+                    "canonical_mapping_failure_reasons": (
+                        canonical_failure_reasons
                     ),
                 },
                 "object_semantic_unavailable_reasons": unavailable_reasons,

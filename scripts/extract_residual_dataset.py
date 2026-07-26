@@ -62,6 +62,8 @@ SUMMARY_FIELDS = (
     "scale_prior_schema_version",
     "scale_prior_sha256",
     "scale_prior_source_table_sha256",
+    "canonical_axis_schema_version",
+    "canonical_threshold_config_sha256",
     "scale_prior_entry_id",
     "scale_prior_confidence",
     "sampler_version",
@@ -277,6 +279,12 @@ def _summary_row(
         "scale_prior_source_table_sha256": metadata[
             "scale_prior_source_table_sha256"
         ],
+        "canonical_axis_schema_version": metadata[
+            "canonical_axis_schema_version"
+        ],
+        "canonical_threshold_config_sha256": metadata[
+            "canonical_threshold_config_sha256"
+        ],
         "scale_prior_entry_id": json.dumps(
             metadata.get("scale_prior_entry_id", []),
             ensure_ascii=False,
@@ -329,6 +337,9 @@ def _resume_valid(
         == "paper_core_scale_priors_v1"
         and bool(metadata.get("scale_prior_sha256"))
         and bool(metadata.get("scale_prior_source_table_sha256"))
+        and metadata.get("canonical_axis_schema_version")
+        == "paper_core_canonical_axis_v1"
+        and bool(metadata.get("canonical_threshold_config_sha256"))
         and sequence.get("channel_names") == list(RESIDUAL_NAMES)
     )
     return bool(valid), payload if valid else None
@@ -483,6 +494,12 @@ def _quality_outputs(
                         "scale_prior_source_table_sha256": summary[
                             "scale_prior_source_table_sha256"
                         ],
+                        "canonical_axis_schema_version": summary[
+                            "canonical_axis_schema_version"
+                        ],
+                        "canonical_threshold_config_sha256": summary[
+                            "canonical_threshold_config_sha256"
+                        ],
                         "scale_prior_entry_id": summary["scale_prior_entry_id"],
                         "scale_prior_confidence": summary["scale_prior_confidence"],
                         "sampler_version": summary["sampler_version"],
@@ -529,6 +546,8 @@ def _quality_outputs(
                 "scale_prior_schema_version",
                 "scale_prior_sha256",
                 "scale_prior_source_table_sha256",
+                "canonical_axis_schema_version",
+                "canonical_threshold_config_sha256",
                 "scale_prior_entry_id",
                 "scale_prior_confidence",
                 "sampler_version",
@@ -549,7 +568,7 @@ def run(arguments: argparse.Namespace, pipeline_factory=_pipeline) -> int:
     config_path = Path(arguments.config).resolve()
     output_root = Path(arguments.output).resolve()
     project_root = Path(__file__).resolve().parents[1]
-    parent = output_root.parent
+    parent = output_root / "audit_reports"
     rows = _read_csv(manifest)
     if not rows:
         raise ValueError("Local media manifest is empty.")

@@ -22,7 +22,7 @@ class ObjectProvider:
             ObjectObservation(
                 "object",
                 "track",
-                "cup",
+                "bottle",
                 (14, 6, 18, 26),
                 1.0,
                 instance_mask=mask,
@@ -82,6 +82,19 @@ def test_detector_keeps_unsupported_exact_category_for_downstream_unavailability
 
     assert len(rows) == 1
     assert rows[0].category == "sports_ball"
+    assert rows[0].keypoints_xy is None
+
+
+def test_paper_core_active_cli_does_not_attach_pose_provider():
+    root = Path(__file__).resolve().parents[1]
+    cli_source = (root / "inference/cli.py").read_text(encoding="utf-8")
+    provider_source = (root / "models/providers.py").read_text(encoding="utf-8")
+
+    assert "RealHumanKeypointProvider(" not in cli_source
+    adapter_signature = provider_source.split(
+        "class LegacyObjectProviderAdapter:", 1
+    )[1].split("def predict", 1)[0]
+    assert "keypoint_provider" not in adapter_signature
 
 
 def test_synthetic_shared_observation_to_outputs(tmp_path):
@@ -101,14 +114,14 @@ def test_synthetic_shared_observation_to_outputs(tmp_path):
         "unit: meter\n"
         "source_table: prior_sources.csv\n"
         "priors:\n"
-        "- entry_id: synthetic_cup_height\n"
-        "  class_name: cup\n"
+        "- entry_id: synthetic_bottle_height\n"
+        "  class_name: bottle\n"
         "  aliases: []\n"
         "  supported_dimension: height\n"
         "  min_m: 1.0\n"
         "  max_m: 2.0\n"
         "  dimension_definition: Synthetic metric height.\n"
-        "  applicable_scope: Synthetic upright cup fixture.\n"
+        "  applicable_scope: Synthetic complete bottle fixture.\n"
         "  excluded_scope: All non-test observations.\n"
         "  confidence: high\n"
         "  minimum_observability: 0.5\n"
@@ -131,6 +144,10 @@ def test_synthetic_shared_observation_to_outputs(tmp_path):
         "video": {"clip_length": 3, "clip_stride": 2, "resize": None},
         "object_semantic": {
             "prior_path": str(prior),
+            "canonical_axis_path": str(
+                Path(__file__).resolve().parents[1]
+                / "configs/canonical_axis_v1.yaml"
+            ),
             "min_depth_coverage": 0.5,
             "max_occlusion_ratio": 0.5,
             "min_mask_quality": 0.3,
@@ -149,6 +166,11 @@ def test_synthetic_shared_observation_to_outputs(tmp_path):
     assert result.object_scores and result.track_scores
     assert result.metadata["historical_csv_read"] is False
     assert result.metadata["authenticity_label_used"] is False
+    assert (
+        result.metadata["canonical_threshold_config_sha256"]
+        == "78aedb8863999d17bddce1289828a1afdb98fc9ebf0092e047c7134f5e02a4dc"
+    )
+    assert result.metadata["bottle_source_runtime_dimension_match"] is True
     assert result.metadata["m6_to_a2_bridge_called"] is False
     assert result.metadata["object_semantic_funnel"]["objects_total"] == 3
     assert result.metadata["object_semantic_funnel"]["objects_with_instance_mask"] == 3

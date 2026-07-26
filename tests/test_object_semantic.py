@@ -7,14 +7,18 @@ from data.schemas import ClipObservation, FrameObservation, ObjectObservation
 from models.object_semantic import (
     _mask_completeness_support,
     compute_object_semantic_residuals,
+    load_canonical_axis_registry,
     load_scale_prior_registry,
 )
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+CANONICAL_AXIS_PATH = PROJECT_ROOT / "configs/canonical_axis_v1.yaml"
 
 
 def _prior(
     path: Path,
     *,
-    category: str = "cup",
+    category: str = "bottle",
     dimension: str = "height",
     orientation: str = "upright",
 ) -> Path:
@@ -54,7 +58,7 @@ def _prior(
 def _clip(
     depths,
     *,
-    category="cup",
+    category="bottle",
     valid_depth=True,
     truncated=False,
     occlusion=0.0,
@@ -114,8 +118,12 @@ def _clip(
     return ClipObservation("video", clip_id, frames)
 
 
-def _semantic(clip, prior):
-    return compute_object_semantic_residuals(clip, prior_path=prior)
+def _semantic(clip, prior, *, canonical_axis_path=CANONICAL_AXIS_PATH):
+    return compute_object_semantic_residuals(
+        clip,
+        prior_path=prior,
+        canonical_axis_path=canonical_axis_path,
+    )
 
 
 def test_mask_completeness_uses_discrete_bbox_intersection():
@@ -218,25 +226,28 @@ def test_semantic_gates_missing_inputs_and_observability(tmp_path):
     truncated = _semantic(
         _clip([1.0], truncated=True, mask_box=(8, 0, 12, 17)), prior
     )[0]
-    assert truncated.reason == "dimension_truncated"
+    assert truncated.reason == "BOTTLE_TRUNCATED"
     height = next(
         item
         for item in truncated.metadata["dimension_observability"]
         if item["dimension"] == "height"
     )
     assert height["observable"] is False
-    assert height["axis_source"] == "robust_metric_surface_principal_axis_xy"
+    assert height["axis_source"] == ""
     assert _semantic(_clip([1.0], occlusion=0.9), prior)[0].reason == "severe_object_occlusion"
     assert _semantic(_clip([1.0], valid_depth=0.4), prior)[0].reason == "insufficient_valid_metric_depth_ratio"
     assert _semantic(_clip([1.0], mask_quality=0.1), prior)[0].reason == "insufficient_mask_quality"
 
 
-def test_vertical_axis_is_observable_without_global_viewpoint(tmp_path):
+def test_bottle_canonical_axis_is_observable_without_global_viewpoint(tmp_path):
     row = _semantic(_clip([1.0]), _prior(tmp_path / "prior.yaml"))[0]
     dimensions = {item["dimension"]: item for item in row.metadata["dimension_observability"]}
     assert row.valid_mask
     assert dimensions["height"]["observable"] is True
-    assert dimensions["height"]["axis_source"] == "robust_metric_surface_principal_axis_xy"
+    assert (
+        dimensions["height"]["axis_source"]
+        == "robust_visible_surface_pca_3d_primary_axis"
+    )
     assert dimensions["width"]["observable"] is False
     assert dimensions["length"]["observable"] is False
     assert row.metadata["estimated_size_m"] > 0.0
@@ -244,7 +255,7 @@ def test_vertical_axis_is_observable_without_global_viewpoint(tmp_path):
     assert row.metadata["authenticity_label_used"] is False
 
 
-def test_container_axis_need_not_match_camera_y(tmp_path):
+def test_horizontal_bottle_axis_need_not_match_camera_y(tmp_path):
     row = _semantic(
         _clip([1.0], mask_box=(3, 8, 17, 12)),
         _prior(tmp_path / "prior.yaml"),
@@ -252,7 +263,7 @@ def test_container_axis_need_not_match_camera_y(tmp_path):
     dimensions = {item["dimension"]: item for item in row.metadata["dimension_observability"]}
     assert row.valid_mask
     assert dimensions["height"]["observable"] is True
-    assert dimensions["height"]["axis_diagnostics"]["camera_y_alignment"] < 0.2
+    assert abs(dimensions["height"]["axis_vector"][0]) > 0.9
     assert dimensions["width"]["observable"] is False
     assert dimensions["length"]["observable"] is False
 
@@ -263,7 +274,7 @@ def test_unreliable_axis_is_missing_not_zero(tmp_path):
         _prior(tmp_path / "prior.yaml"),
     )[0]
     assert not row.valid_mask
-    assert row.reason == "no_reliable_dimension_axis"
+    assert row.reason == "BOTTLE_NOT_ELONGATED_IN_3D"
     assert np.isnan(row.raw_value)
 
 
@@ -405,7 +416,7 @@ def test_formal_prior_unit_is_meter(tmp_path, replacement, message):
         with pytest.raises(ValueError, match=message):
             load_scale_prior_registry(prior)
     else:
-        assert load_scale_prior_registry(prior).resolve("cup") is not None
+        assert load_scale_prior_registry(prior).resolve("bottle") is not None
 
 
 def test_formal_prior_requires_strict_increasing_metric_interval(tmp_path):
@@ -424,7 +435,7 @@ def test_prior_does_not_bypass_dimension_observability(tmp_path):
         _prior(tmp_path / "prior.yaml"),
     )[0]
     assert not row.valid_mask
-    assert row.reason == "dimension_truncated"
+    assert row.reason == "BOTTLE_TRUNCATED"
     assert np.isnan(row.raw_value)
 
 
@@ -444,7 +455,7 @@ def test_semantic_temporal_is_prior_independent_and_label_blind(tmp_path):
     assert temporal_rows[-1].metadata["category_prior_required"] is False
 
 
-def test_no_implicit_container_upright_prior_but_principal_temporal_is_available(
+def test_bottle_canonical_prior_and_principal_temporal_are_independent(
     tmp_path,
 ):
     prior = _prior(tmp_path / "prior.yaml", category="bottle")
@@ -459,8 +470,8 @@ def test_no_implicit_container_upright_prior_but_principal_temporal_is_available
         for item in prior_rows[-1].metadata["dimension_observability"]
     }
 
-    assert all(not row.valid_mask for row in prior_rows)
-    assert dimensions["height"]["observable"] is False
+    assert all(row.valid_mask for row in prior_rows)
+    assert dimensions["height"]["observable"] is True
     assert dimensions["principal_extent"]["observable"] is True
     assert temporal_rows[-1].valid_mask
     assert temporal_rows[-1].metadata["dimension"] == "principal_extent"
@@ -476,3 +487,257 @@ def test_active_semantic_route_does_not_import_pair_rsd():
     ).read_text(encoding="utf-8")
     assert "dimension_aligned_scale_depth" not in source
     assert "scale_depth_residual" not in source
+
+
+def test_person_height_reports_missing_active_pose_provider(tmp_path):
+    clip = _clip([1.0], category="person", mask_box=(5, 3, 16, 17))
+    row = _semantic(
+        clip,
+        _prior(tmp_path / "person.yaml", category="person"),
+    )[0]
+    record = next(
+        item
+        for item in row.metadata["dimension_observability"]
+        if item["dimension"] == "height"
+    )
+
+    assert not row.valid_mask
+    assert row.reason == "PERSON_POSE_PROVIDER_MISSING"
+    assert np.isnan(row.raw_value)
+    assert record["observable"] is False
+    assert record["axis_source"] == ""
+    assert record["axis_vector"] == []
+
+
+def test_person_missing_pose_never_uses_bbox_mask_axis_or_body_ratio(tmp_path):
+    clip = _clip([1.0], category="person", mask_box=(5, 3, 16, 17))
+    clip.frames[0].objects[0].metadata["authenticity_label"] = "fake"
+    row = _semantic(
+        clip,
+        _prior(tmp_path / "person_no_fallback.yaml", category="person"),
+    )[0]
+    record = next(
+        item
+        for item in row.metadata["dimension_observability"]
+        if item["dimension"] == "height"
+    )
+    diagnostics = record["axis_diagnostics"]
+
+    assert not row.valid_mask
+    assert row.reason == "PERSON_POSE_PROVIDER_MISSING"
+    assert diagnostics["bbox_height_used"] is False
+    assert diagnostics["mask_image_axis_used"] is False
+    assert diagnostics["human_ratio_extrapolation_used"] is False
+    assert row.metadata["authenticity_label_used"] is False
+
+
+@pytest.mark.parametrize(
+    ("instance_mask", "mask_quality"),
+    [
+        (None, 1.0),
+        ("present", 0.1),
+    ],
+)
+def test_person_prior_reason_is_never_overridden_by_input_quality(
+    instance_mask,
+    mask_quality,
+    tmp_path,
+):
+    clip = _clip(
+        [1.0],
+        category="person",
+        mask_box=(5, 3, 16, 17),
+        mask_quality=mask_quality,
+    )
+    if instance_mask is None:
+        clip.frames[0].objects[0].instance_mask = None
+    row = _semantic(
+        clip,
+        _prior(tmp_path / "person_fixed_reason.yaml", category="person"),
+    )[0]
+
+    assert not row.valid_mask
+    assert row.reason == "PERSON_POSE_PROVIDER_MISSING"
+    assert np.isnan(row.raw_value)
+
+
+def test_bottle_3d_pca_provenance_and_horizontal_mapping(tmp_path):
+    row = _semantic(
+        _clip([1.0], mask_box=(3, 8, 17, 12)),
+        _prior(tmp_path / "horizontal_bottle.yaml"),
+    )[0]
+
+    assert row.valid_mask
+    assert row.metadata["canonical_dimension"] == "height"
+    assert row.metadata["principal_extent"] > row.metadata["secondary_extent"]
+    assert row.metadata["elongation_ratio"] >= 1.8
+    assert row.metadata["canonical_mapping_rule"].startswith("exact_bottle_")
+    assert abs(row.metadata["axis_vector"][0]) > 0.9
+
+
+def test_spherical_or_truncated_bottle_is_unavailable_not_zero(tmp_path):
+    prior = _prior(tmp_path / "strict_bottle.yaml")
+    spherical = _semantic(
+        _clip([1.0], mask_box=(5, 5, 15, 15)),
+        prior,
+    )[0]
+    truncated = _semantic(
+        _clip([1.0], truncated=True, mask_box=(8, 0, 12, 17)),
+        prior,
+    )[0]
+
+    assert not spherical.valid_mask
+    assert spherical.reason == "BOTTLE_NOT_ELONGATED_IN_3D"
+    assert np.isnan(spherical.raw_value)
+    assert not truncated.valid_mask
+    assert truncated.reason == "BOTTLE_TRUNCATED"
+
+
+@pytest.mark.parametrize("category", ["cup", "vase"])
+def test_other_container_classes_never_map_to_bottle(category, tmp_path):
+    row = _semantic(
+        _clip([1.0], category=category),
+        _prior(tmp_path / f"{category}.yaml"),
+    )[0]
+    assert not row.valid_mask
+    assert row.reason in {
+        "missing_category_metric_prior",
+        "category_too_broad_without_subtype",
+    }
+    assert row.metadata["canonical_mapping_rule"] == ""
+
+
+def test_car_longest_pca_axis_does_not_imply_length(tmp_path):
+    row = _semantic(
+        _clip(
+            [1.0],
+            category="car",
+            mask_box=(2, 8, 18, 12),
+            viewpoint="side",
+        ),
+        _prior(tmp_path / "car.yaml", category="car", dimension="length"),
+    )[0]
+
+    assert not row.valid_mask
+    assert row.reason == "CAR_INDEPENDENT_VIEWPOINT_AXIS_UNAVAILABLE"
+    assert row.metadata["axis_source"] == ""
+    assert "independent" in row.metadata["canonical_mapping_rule"]
+
+
+def test_formal_prior_values_and_hashes_are_frozen():
+    root = Path(__file__).resolve().parents[1]
+    registry = load_scale_prior_registry(root / "configs/scale_priors_v1.yaml")
+
+    assert (
+        registry.prior_sha256
+        == "6ce420b0af6ac913569f3d5599231dc2f89e0e7d180d1c1cec3180abfd8b055b"
+    )
+    assert (
+        registry.source_table_sha256
+        == "191a79154fb529fdd304f8cd7198c3c9f22c173e494eaff5e6ff43a27044bdc8"
+    )
+    assert (
+        registry.resolve("person").min_meters,
+        registry.resolve("person").max_meters,
+    ) == (1.50, 1.99)
+    assert (
+        registry.resolve("bottle").min_meters,
+        registry.resolve("bottle").max_meters,
+    ) == (0.137, 0.339)
+    assert (
+        registry.resolve("car").min_meters,
+        registry.resolve("car").max_meters,
+    ) == (2.94, 4.92)
+
+
+def test_authenticity_label_does_not_change_canonical_axis_mapping(tmp_path):
+    prior = _prior(tmp_path / "label_blind_bottle.yaml")
+    real_clip = _clip([1.0])
+    fake_clip = _clip([1.0])
+    real_clip.frames[0].objects[0].metadata["authenticity_label"] = "real"
+    fake_clip.frames[0].objects[0].metadata["authenticity_label"] = "fake"
+    real = _semantic(real_clip, prior)[0]
+    fake = _semantic(fake_clip, prior)[0]
+
+    assert real.valid_mask and fake.valid_mask
+    assert real.raw_value == pytest.approx(fake.raw_value)
+    assert real.metadata["axis_vector"] == fake.metadata["axis_vector"]
+    assert real.metadata["authenticity_label_used"] is False
+    assert fake.metadata["authenticity_label_used"] is False
+
+
+def test_canonical_axis_v1_is_frozen_and_source_runtime_dimension_matched():
+    registry = load_canonical_axis_registry(CANONICAL_AXIS_PATH)
+
+    assert registry.schema_version == "paper_core_canonical_axis_v1"
+    assert (
+        registry.config_sha256
+        == "78aedb8863999d17bddce1289828a1afdb98fc9ebf0092e047c7134f5e02a4dc"
+    )
+    assert registry.bottle_source_runtime_dimension_match is True
+    assert registry.bottle_source_field == "Sequence.objects[].scale[1]"
+    assert "base-to-cap" in registry.bottle_source_dimension_definition
+    assert "base-to-cap" in registry.bottle_runtime_dimension_definition
+    assert registry.thresholds["bottle_eigenvalue_ratio_min"] == 2.0
+    assert registry.thresholds["bottle_extent_ratio_min"] == 1.8
+    assert registry.thresholds["bottle_point_support_min"] == 20
+    assert registry.thresholds["bottle_depth_coverage_min"] == 0.5
+    assert registry.thresholds["bottle_axis_stability_min"] == 0.6
+    assert registry.thresholds["bottle_track_axis_compatibility_min"] == 0.8
+    assert registry.thresholds["truncation_threshold"] == 0.0
+    assert registry.thresholds["occlusion_threshold"] == 0.5
+    assert registry.thresholds["robust_projection_low_quantile"] == 0.05
+    assert registry.thresholds["robust_projection_high_quantile"] == 0.95
+
+
+def test_bottle_source_runtime_dimension_mismatch_is_hard_rejected(tmp_path):
+    config = tmp_path / "canonical_axis_mismatch.yaml"
+    config.write_text(
+        CANONICAL_AXIS_PATH.read_text(encoding="utf-8").replace(
+            "    ready: true",
+            "    ready: false",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    row = _semantic(
+        _clip([1.0]),
+        _prior(tmp_path / "bottle_prior.yaml"),
+        canonical_axis_path=config,
+    )[0]
+
+    assert not row.valid_mask
+    assert row.reason == "BOTTLE_SOURCE_RUNTIME_DIMENSION_MISMATCH"
+    assert np.isnan(row.raw_value)
+    assert row.metadata["source_runtime_dimension_match"] is False
+
+
+def test_bottle_canonical_provenance_contains_frozen_geometry_fields(tmp_path):
+    row = _semantic(
+        _clip([1.0], mask_box=(3, 8, 17, 12)),
+        _prior(tmp_path / "provenance_bottle.yaml"),
+    )[0]
+
+    assert row.valid_mask
+    assert row.metadata["class_name"] == "bottle"
+    assert row.metadata["canonical_dimension"] == "height"
+    assert row.metadata["axis_source"] == "robust_visible_surface_pca_3d_primary_axis"
+    assert len(row.metadata["axis_vector"]) == 3
+    assert row.metadata["principal_extent"] > row.metadata["secondary_extent"]
+    assert row.metadata["eigenvalue_ratio"] >= 2.0
+    assert row.metadata["extent_ratio"] >= 1.8
+    assert row.metadata["axis_point_support"] >= 20
+    assert row.metadata["axis_stability"] >= 0.6
+    assert row.metadata["estimated_size_m"] > 0.0
+    assert row.metadata["prior_min_m"] < row.metadata["prior_max_m"]
+    assert np.isfinite(row.metadata["residual"])
+    assert row.metadata["confidence"] > 0.0
+    assert row.metadata["visible_surface_only"] is True
+    assert row.metadata["scale_prior_entry_id"] == "synthetic_test_prior"
+    assert row.metadata["scale_prior_sha256"]
+    assert row.metadata["scale_prior_source_table_sha256"]
+    assert (
+        row.metadata["canonical_threshold_config_sha256"]
+        == "78aedb8863999d17bddce1289828a1afdb98fc9ebf0092e047c7134f5e02a4dc"
+    )
+    assert row.metadata["authenticity_label_used"] is False

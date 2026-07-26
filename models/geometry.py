@@ -73,7 +73,13 @@ def predict_target_positions(points_xyz: np.ndarray, relative_pose: np.ndarray, 
     return project_points(transform_points(points_xyz, relative_pose), target_K)
 
 
-def build_metric_object_surface(frame: FrameObservation, obj: ObjectObservation):
+def build_metric_object_surface(
+    frame: FrameObservation,
+    obj: ObjectObservation,
+    *,
+    quantile_low: float = 0.05,
+    quantile_high: float = 0.95,
+):
     if obj.instance_mask is None or frame.metric_depth is None or frame.intrinsics is None:
         return None
     cloud = build_object_surface_pointcloud(
@@ -94,6 +100,8 @@ def build_metric_object_surface(frame: FrameObservation, obj: ObjectObservation)
         uncertainty_map=None,
         provider_name="paper_core_metric_depth",
         intrinsics_source="model_predicted_or_calibrated",
+        quantile_low=quantile_low,
+        quantile_high=quantile_high,
     )
     if cloud.valid:
         obj.metric_surface_xyz = np.asarray(
