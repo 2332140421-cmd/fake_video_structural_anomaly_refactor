@@ -104,7 +104,9 @@ class LegacyObjectProviderAdapter:
             ObjectObservation(
                 object_id=row.object_id,
                 track_id=str(row.track_id or row.person_track_id or row.object_id),
-                category=row.label,
+                category=str(
+                    row.provenance.get("raw_label", row.label)
+                ).strip().lower().replace(" ", "_"),
                 bbox_xyxy=tuple(float(value) for value in (row.bbox or (0, 0, width, height))),
                 confidence=float(row.confidence),
                 instance_mask=(

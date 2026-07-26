@@ -20,6 +20,7 @@ from models.providers import (
 )
 from utils.config import load_config, resolve_path, validate_config
 from utils.logging import configure_logging
+from semantic3d.real_object_provider import normalize_label
 
 from .outputs import save_analysis_outputs
 from .pipeline import ForgeryAnalysisPipeline
@@ -33,7 +34,20 @@ def _pipeline(config_path: str | Path) -> tuple[ForgeryAnalysisPipeline, dict]:
     object_weights = resolve_path(config, providers["object_weights"])
     instance_weights = resolve_path(config, providers["instance_weights"])
     depth_weights = resolve_path(config, providers["unidepth_weights"])
-    detector = RealObjectProvider(model_path=object_weights, device=device)
+    detector = RealObjectProvider(
+        model_path=object_weights,
+        device=device,
+        skip_unknown_scale_prior=False,
+    )
+    detector_names = getattr(detector.detector, "names", ())
+    detector.allowed_labels = {
+        normalize_label(str(name))
+        for name in (
+            detector_names.values()
+            if hasattr(detector_names, "values")
+            else detector_names
+        )
+    }
     segmenter = RealInstanceMaskProvider(model_path=instance_weights, device=device)
     depth = UniDepthV2Adapter(
         weights_path=depth_weights,

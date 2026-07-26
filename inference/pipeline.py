@@ -21,7 +21,10 @@ from data.video import (
 from models.fusion import fuse_clip_residuals, fuse_video_results
 from models.geometry import predict_target_positions
 from models.motion_residuals import compute_motion_residuals
-from models.object_semantic import compute_object_semantic_residuals, load_metric_priors
+from models.object_semantic import (
+    compute_object_semantic_residuals,
+    load_scale_prior_registry,
+)
 from models.providers import DepthIntrinsicsProvider, ObjectProvider, PoseProvider, TrackProvider
 from models.relation_residuals import compute_relation_residuals
 from models.reprojection_residuals import compute_reprojection_residuals
@@ -244,7 +247,9 @@ class ForgeryAnalysisPipeline:
             return sum(row.valid_mask and row.name in names for row in residuals)
 
         objects = [obj for frame in frames for obj in frame.objects]
-        priors = load_metric_priors(self.config["object_semantic"]["prior_path"])
+        prior_registry = load_scale_prior_registry(
+            self.config["object_semantic"]["prior_path"]
+        )
         min_mask_quality = float(
             self.config["object_semantic"].get("min_mask_quality", 0.3)
         )
@@ -310,8 +315,23 @@ class ForgeryAnalysisPipeline:
             any(bool(record.get("observable", False)) for record in records)
             for records in semantic_dimensions
         )
+        objects_with_supported_prior = sum(
+            bool(row.metadata.get("scale_prior_entry_id")) for row in semantic_rows
+        )
+        objects_with_supported_prior_and_observable_dimension = sum(
+            bool(row.metadata.get("scale_prior_entry_id"))
+            and any(
+                record.get("dimension") == row.metadata.get("dimension")
+                and bool(record.get("observable", False))
+                for record in row.metadata.get("dimension_observability", ())
+            )
+            for row in semantic_rows
+        )
         unavailable_reason_map = {
             "missing_category_metric_prior": "NO_SCALE_PRIOR",
+            "category_too_broad_without_subtype": (
+                "CATEGORY_TOO_BROAD_WITHOUT_SUBTYPE"
+            ),
             "instance_mask_unavailable": "NO_INSTANCE_MASK",
             "severe_object_truncation": "TRUNCATED",
             "dimension_truncated": "TRUNCATED",
@@ -328,6 +348,7 @@ class ForgeryAnalysisPipeline:
             name: 0
             for name in (
                 "NO_SCALE_PRIOR",
+                "CATEGORY_TOO_BROAD_WITHOUT_SUBTYPE",
                 "NO_INSTANCE_MASK",
                 "INVALID_METRIC_DEPTH",
                 "INSUFFICIENT_DEPTH_COVERAGE",
@@ -480,16 +501,36 @@ class ForgeryAnalysisPipeline:
                     for frame in frames for obj in frame.objects
                 ),
                 "objects_with_scale_prior": sum(
-                    row.name == "semantic_metric_prior"
-                    and row.reason != "missing_category_metric_prior"
-                    for row in residuals
+                    bool(row.metadata.get("scale_prior_entry_id"))
+                    for row in semantic_rows
                 ),
-                "objects_with_observable_dimension": semantic_prior,
+                "objects_with_observable_dimension": (
+                    objects_with_any_observable_dimension
+                ),
                 "objects_with_semantic_prior_residual": semantic_prior,
                 "tracks_with_semantic_temporal_residual": (
                     tracks_with_semantic_temporal_residual
                 ),
                 "authenticity_label_used": False,
+                "scale_prior_schema_version": prior_registry.schema_version,
+                "scale_prior_sha256": prior_registry.prior_sha256,
+                "scale_prior_source_table_sha256": (
+                    prior_registry.source_table_sha256
+                ),
+                "scale_prior_entry_id": sorted(
+                    {
+                        str(row.metadata["scale_prior_entry_id"])
+                        for row in semantic_rows
+                        if row.metadata.get("scale_prior_entry_id")
+                    }
+                ),
+                "scale_prior_confidence": {
+                    str(row.metadata["scale_prior_entry_id"]): str(
+                        row.metadata["scale_prior_confidence"]
+                    )
+                    for row in semantic_rows
+                    if row.metadata.get("scale_prior_entry_id")
+                },
                 "m6_to_a2_bridge_called": False,
                 "real_analysis_reads_historical_csv": False,
                 "branch_evidence_counts": branch_counts,
@@ -500,7 +541,10 @@ class ForgeryAnalysisPipeline:
                         for obj in objects
                     ),
                     "objects_with_valid_metric_depth": len(valid_objects),
-                    "objects_with_scale_prior": sum(obj.category in priors for obj in objects),
+                    "objects_with_scale_prior": objects_with_supported_prior,
+                    "objects_with_supported_prior_and_observable_dimension": (
+                        objects_with_supported_prior_and_observable_dimension
+                    ),
                     "objects_not_severely_truncated": sum(not obj.truncated for obj in objects),
                     "objects_not_severely_occluded": sum(
                         obj.occlusion_ratio <= max_occlusion_ratio for obj in objects
@@ -523,6 +567,17 @@ class ForgeryAnalysisPipeline:
                     "tracks_with_multiple_valid_frames": tracks_with_multiple_valid_frames,
                     "tracks_with_semantic_temporal_residual": (
                         tracks_with_semantic_temporal_residual
+                    ),
+                    "prior_support_rate": (
+                        objects_with_supported_prior / len(objects)
+                        if objects
+                        else float("nan")
+                    ),
+                    "prior_execution_rate": (
+                        semantic_prior
+                        / objects_with_supported_prior_and_observable_dimension
+                        if objects_with_supported_prior_and_observable_dimension
+                        else float("nan")
                     ),
                 },
                 "object_semantic_unavailable_reasons": unavailable_reasons,

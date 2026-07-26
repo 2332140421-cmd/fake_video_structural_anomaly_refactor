@@ -1,11 +1,13 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from data.schemas import ClipObservation, FrameObservation, ObjectObservation
 from models.object_semantic import (
     _mask_completeness_support,
     compute_object_semantic_residuals,
+    load_scale_prior_registry,
 )
 
 
@@ -16,15 +18,34 @@ def _prior(
     dimension: str = "height",
     orientation: str = "upright",
 ) -> Path:
+    source = path.with_name(f"{path.stem}_sources.csv")
+    source.write_text(
+        "derivation_id,source_type,source_title,publisher,source_identifier,"
+        "source_version,accessed_at,sample_count,raw_measurements_or_range,"
+        "derivation_method,review_status\n"
+        "SYNTHETIC_TEST_ONLY,formal_research_dataset,Synthetic geometry fixture,"
+        "test suite,fixture,1,2026-07-26,3,synthetic 0.8 to 1.0 m,"
+        "fixed unit-test fixture,APPROVED_SOURCE_BACKED\n",
+        encoding="utf-8",
+    )
     path.write_text(
-        "metric_scale_priors:\n"
-        f"- category: {category}\n"
-        f"  dimension: {dimension}\n"
-        "  min_meters: 0.8\n"
-        "  max_meters: 1.0\n"
-        f"  orientation_requirement: {orientation}\n"
+        "schema_version: paper_core_scale_priors_v1\n"
+        "unit: meter\n"
+        f"source_table: {source.name}\n"
+        "priors:\n"
+        "- entry_id: synthetic_test_prior\n"
+        f"  class_name: {category}\n"
+        "  aliases: []\n"
+        f"  supported_dimension: {dimension}\n"
+        "  min_m: 0.8\n"
+        "  max_m: 1.0\n"
+        "  dimension_definition: Synthetic metric dimension.\n"
+        f"  applicable_scope: Synthetic {orientation} geometry fixture.\n"
+        "  excluded_scope: All non-test observations.\n"
+        "  confidence: high\n"
         "  minimum_observability: 0.5\n"
-        "  source_note: synthetic geometry test\n",
+        "  derivation_id: SYNTHETIC_TEST_ONLY\n"
+        "unsupported_classes: []\n",
         encoding="utf-8",
     )
     return path
@@ -42,6 +63,7 @@ def _clip(
     mask_quality=1.0,
     track_ids="stable_track",
     clip_id="clip",
+    pose_status="upright_shape_compatible",
 ):
     mask = np.zeros((20, 20), dtype=bool)
     x1, y1, x2, y2 = mask_box
@@ -73,6 +95,7 @@ def _clip(
             occlusion_ratio=occlusion,
             viewpoint=viewpoint,
             mask_quality=mask_quality,
+            metadata={"pose_estimate_status": pose_status},
         )
         frames.append(
             FrameObservation(
@@ -266,6 +289,184 @@ def test_temporal_history_never_mixes_tracks_or_clips(tmp_path):
         row.valid_mask
         for row in first_clip + second_clip
         if row.name == "semantic_metric_temporal"
+    )
+
+
+def test_empty_formal_prior_table_has_no_prior_evidence_or_hidden_fallback(tmp_path):
+    source = tmp_path / "sources.csv"
+    source.write_text(
+        "derivation_id,source_type,source_title,publisher,source_identifier,"
+        "source_version,accessed_at,sample_count,raw_measurements_or_range,"
+        "derivation_method,review_status\n",
+        encoding="utf-8",
+    )
+    prior = tmp_path / "empty.yaml"
+    prior.write_text(
+        "schema_version: paper_core_scale_priors_v1\n"
+        "unit: meter\n"
+        "source_table: sources.csv\n"
+        "priors: []\n"
+        "unsupported_classes: []\n",
+        encoding="utf-8",
+    )
+
+    registry = load_scale_prior_registry(prior)
+    rows = _semantic(_clip([1.0, 1.0], category="cup"), prior)
+    prior_rows = [row for row in rows if row.name == "semantic_metric_prior"]
+    temporal_rows = [row for row in rows if row.name == "semantic_metric_temporal"]
+
+    assert not registry.priors_by_label
+    assert all(not row.valid_mask for row in prior_rows)
+    assert {row.reason for row in prior_rows} == {"missing_category_metric_prior"}
+    assert temporal_rows[-1].valid_mask
+    assert temporal_rows[-1].metadata["category_prior_required"] is False
+
+
+def test_formal_prior_loads_only_with_approved_source_and_exact_alias(tmp_path):
+    prior = _prior(tmp_path / "prior.yaml", category="person")
+    payload = prior.read_text(encoding="utf-8").replace(
+        "  aliases: []", "  aliases: [pedestrian]"
+    )
+    prior.write_text(payload, encoding="utf-8")
+    registry = load_scale_prior_registry(prior)
+
+    assert registry.resolve("person") is registry.resolve("pedestrian")
+    assert registry.resolve("Person") is None
+    assert registry.resolve("person ") is None
+    assert registry.resolve("pedestr") is None
+
+
+def test_unapproved_or_missing_source_derivation_is_rejected(tmp_path):
+    prior = _prior(tmp_path / "prior.yaml")
+    source = tmp_path / "prior_sources.csv"
+    source.write_text(
+        source.read_text(encoding="utf-8").replace(
+            "APPROVED_SOURCE_BACKED", "UNREVIEWED"
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="not source-approved"):
+        load_scale_prior_registry(prior)
+
+    source.write_text(
+        source.read_text(encoding="utf-8").replace("UNREVIEWED", "APPROVED_SOURCE_BACKED"),
+        encoding="utf-8",
+    )
+    prior.write_text(
+        prior.read_text(encoding="utf-8").replace(
+            "SYNTHETIC_TEST_ONLY\nunsupported_classes",
+            "MISSING_DERIVATION\nunsupported_classes",
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="no approved source derivation"):
+        load_scale_prior_registry(prior)
+
+
+def test_unsupported_and_broad_categories_remain_unavailable(tmp_path):
+    prior = _prior(tmp_path / "prior.yaml")
+    prior.write_text(
+        prior.read_text(encoding="utf-8").replace(
+            "unsupported_classes: []",
+            "unsupported_classes:\n"
+            "- class_name: sports ball\n"
+            "  aliases: []\n"
+            "  reason: CATEGORY_TOO_BROAD_WITHOUT_SUBTYPE",
+        ),
+        encoding="utf-8",
+    )
+    registry = load_scale_prior_registry(prior)
+
+    assert registry.resolve("sports ball") is None
+    assert registry.resolve("basketball") is None
+    assert (
+        registry.unsupported_reason("sports ball")
+        == "CATEGORY_TOO_BROAD_WITHOUT_SUBTYPE"
+    )
+    row = _semantic(_clip([1.0], category="sports ball"), prior)[0]
+    assert not row.valid_mask
+    assert row.reason == "category_too_broad_without_subtype"
+
+
+@pytest.mark.parametrize(
+    ("replacement", "message"),
+    [
+        ("unit: meter", ""),
+        ("unit: centimeter", "unit must be exactly"),
+    ],
+)
+def test_formal_prior_unit_is_meter(tmp_path, replacement, message):
+    prior = _prior(tmp_path / "prior.yaml")
+    prior.write_text(
+        prior.read_text(encoding="utf-8").replace("unit: meter", replacement),
+        encoding="utf-8",
+    )
+    if message:
+        with pytest.raises(ValueError, match=message):
+            load_scale_prior_registry(prior)
+    else:
+        assert load_scale_prior_registry(prior).resolve("cup") is not None
+
+
+def test_formal_prior_requires_strict_increasing_metric_interval(tmp_path):
+    prior = _prior(tmp_path / "prior.yaml")
+    prior.write_text(
+        prior.read_text(encoding="utf-8").replace("  max_m: 1.0", "  max_m: 0.8"),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="min_m < max_m"):
+        load_scale_prior_registry(prior)
+
+
+def test_prior_does_not_bypass_dimension_observability(tmp_path):
+    row = _semantic(
+        _clip([1.0], truncated=True, mask_box=(8, 0, 12, 17)),
+        _prior(tmp_path / "prior.yaml"),
+    )[0]
+    assert not row.valid_mask
+    assert row.reason == "dimension_truncated"
+    assert np.isnan(row.raw_value)
+
+
+def test_semantic_temporal_is_prior_independent_and_label_blind(tmp_path):
+    prior = _prior(tmp_path / "prior.yaml", category="other_category")
+    clip = _clip([1.0, 1.0], category="cup")
+    for frame, label in zip(clip.frames, ("real", "fake"), strict=True):
+        frame.objects[0].metadata["authenticity_label"] = label
+    rows = _semantic(clip, prior)
+    prior_rows = [row for row in rows if row.name == "semantic_metric_prior"]
+    temporal_rows = [row for row in rows if row.name == "semantic_metric_temporal"]
+
+    assert all(not row.valid_mask for row in prior_rows)
+    assert temporal_rows[-1].valid_mask
+    assert temporal_rows[-1].raw_value < 1e-8
+    assert temporal_rows[-1].metadata["authenticity_label_used"] is False
+    assert temporal_rows[-1].metadata["category_prior_required"] is False
+
+
+def test_no_implicit_container_upright_prior_but_principal_temporal_is_available(
+    tmp_path,
+):
+    prior = _prior(tmp_path / "prior.yaml", category="bottle")
+    rows = _semantic(
+        _clip([1.0, 1.0], category="bottle", pose_status="unavailable"),
+        prior,
+    )
+    prior_rows = [row for row in rows if row.name == "semantic_metric_prior"]
+    temporal_rows = [row for row in rows if row.name == "semantic_metric_temporal"]
+    dimensions = {
+        item["dimension"]: item
+        for item in prior_rows[-1].metadata["dimension_observability"]
+    }
+
+    assert all(not row.valid_mask for row in prior_rows)
+    assert dimensions["height"]["observable"] is False
+    assert dimensions["principal_extent"]["observable"] is True
+    assert temporal_rows[-1].valid_mask
+    assert temporal_rows[-1].metadata["dimension"] == "principal_extent"
+    assert (
+        temporal_rows[-1].metadata["legacy_container_upright_fallback_used"]
+        is False
     )
 
 

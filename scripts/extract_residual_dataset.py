@@ -59,6 +59,11 @@ SUMMARY_FIELDS = (
     "failure_reason",
     "source_commit",
     "source_config_sha256",
+    "scale_prior_schema_version",
+    "scale_prior_sha256",
+    "scale_prior_source_table_sha256",
+    "scale_prior_entry_id",
+    "scale_prior_confidence",
     "sampler_version",
     "authenticity_label_used",
     "result_path",
@@ -267,6 +272,23 @@ def _summary_row(
         "failure_reason": "",
         "source_commit": source_commit,
         "source_config_sha256": config_sha256,
+        "scale_prior_schema_version": metadata["scale_prior_schema_version"],
+        "scale_prior_sha256": metadata["scale_prior_sha256"],
+        "scale_prior_source_table_sha256": metadata[
+            "scale_prior_source_table_sha256"
+        ],
+        "scale_prior_entry_id": json.dumps(
+            metadata.get("scale_prior_entry_id", []),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
+        "scale_prior_confidence": json.dumps(
+            metadata.get("scale_prior_confidence", {}),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
         "sampler_version": SAMPLER_VERSION,
         "authenticity_label_used": bool(
             metadata.get("authenticity_label_used", True)
@@ -303,6 +325,10 @@ def _resume_valid(
         and metadata.get("source_commit") == source_commit
         and metadata.get("source_config_sha256") == config_sha256
         and metadata.get("authenticity_label_used") is False
+        and metadata.get("scale_prior_schema_version")
+        == "paper_core_scale_priors_v1"
+        and bool(metadata.get("scale_prior_sha256"))
+        and bool(metadata.get("scale_prior_source_table_sha256"))
         and sequence.get("channel_names") == list(RESIDUAL_NAMES)
     )
     return bool(valid), payload if valid else None
@@ -450,6 +476,15 @@ def _quality_outputs(
                         "clip_count": summary["clips"],
                         "source_commit": summary["source_commit"],
                         "source_config_sha256": summary["source_config_sha256"],
+                        "scale_prior_schema_version": summary[
+                            "scale_prior_schema_version"
+                        ],
+                        "scale_prior_sha256": summary["scale_prior_sha256"],
+                        "scale_prior_source_table_sha256": summary[
+                            "scale_prior_source_table_sha256"
+                        ],
+                        "scale_prior_entry_id": summary["scale_prior_entry_id"],
+                        "scale_prior_confidence": summary["scale_prior_confidence"],
                         "sampler_version": summary["sampler_version"],
                         "license_status": member["license_status"],
                     }
@@ -491,6 +526,11 @@ def _quality_outputs(
                 "clip_count",
                 "source_commit",
                 "source_config_sha256",
+                "scale_prior_schema_version",
+                "scale_prior_sha256",
+                "scale_prior_source_table_sha256",
+                "scale_prior_entry_id",
+                "scale_prior_confidence",
                 "sampler_version",
                 "license_status",
             ),

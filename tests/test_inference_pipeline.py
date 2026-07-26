@@ -6,6 +6,8 @@ from data.observations import build_shared_observations
 from data.schemas import ObjectObservation, TrackObservation, VideoClip
 from inference.outputs import save_analysis_outputs
 from inference.pipeline import ForgeryAnalysisPipeline
+from models.providers import LegacyObjectProviderAdapter
+from semantic3d.real_object_provider import RealObjectProvider
 
 
 class ObjectProvider:
@@ -16,7 +18,17 @@ class ObjectProvider:
         self.calls += 1
         mask = np.zeros(frame.shape[:2], dtype=bool)
         mask[6:26, 14:18] = True
-        return [ObjectObservation("object", "track", "cup", (14, 6, 18, 26), 1.0, instance_mask=mask)]
+        return [
+            ObjectObservation(
+                "object",
+                "track",
+                "cup",
+                (14, 6, 18, 26),
+                1.0,
+                instance_mask=mask,
+                metadata={"pose_estimate_status": "upright_shape_compatible"},
+            )
+        ]
 
 
 class DepthProvider:
@@ -51,13 +63,57 @@ class TrackProvider:
         ]
 
 
+def test_detector_keeps_unsupported_exact_category_for_downstream_unavailability():
+    detector = RealObjectProvider(
+        detector=lambda _: [
+            {
+                "bbox": [2.0, 2.0, 12.0, 12.0],
+                "label": "sports ball",
+                "confidence": 0.9,
+            }
+        ],
+        allowed_labels=[],
+        skip_unknown_scale_prior=False,
+    )
+    rows = LegacyObjectProviderAdapter(detector).predict(
+        np.zeros((16, 16, 3), dtype=np.uint8),
+        0,
+    )
+
+    assert len(rows) == 1
+    assert rows[0].category == "sports_ball"
+
+
 def test_synthetic_shared_observation_to_outputs(tmp_path):
     prior = tmp_path / "priors.yaml"
+    source = tmp_path / "prior_sources.csv"
+    source.write_text(
+        "derivation_id,source_type,source_title,publisher,source_identifier,"
+        "source_version,accessed_at,sample_count,raw_measurements_or_range,"
+        "derivation_method,review_status\n"
+        "SYNTHETIC_TEST_ONLY,formal_research_dataset,Synthetic geometry fixture,"
+        "test suite,fixture,1,2026-07-26,3,synthetic 1.0 to 2.0 m,"
+        "fixed unit-test fixture,APPROVED_SOURCE_BACKED\n",
+        encoding="utf-8",
+    )
     prior.write_text(
-        "metric_scale_priors:\n- category: cup\n  dimension: height\n"
-        "  min_meters: 1.0\n  max_meters: 2.0\n"
-        "  orientation_requirement: upright\n  minimum_observability: 0.5\n"
-        "  source_note: synthetic\n",
+        "schema_version: paper_core_scale_priors_v1\n"
+        "unit: meter\n"
+        "source_table: prior_sources.csv\n"
+        "priors:\n"
+        "- entry_id: synthetic_cup_height\n"
+        "  class_name: cup\n"
+        "  aliases: []\n"
+        "  supported_dimension: height\n"
+        "  min_m: 1.0\n"
+        "  max_m: 2.0\n"
+        "  dimension_definition: Synthetic metric height.\n"
+        "  applicable_scope: Synthetic upright cup fixture.\n"
+        "  excluded_scope: All non-test observations.\n"
+        "  confidence: high\n"
+        "  minimum_observability: 0.5\n"
+        "  derivation_id: SYNTHETIC_TEST_ONLY\n"
+        "unsupported_classes: []\n",
         encoding="utf-8",
     )
     frames = tuple(np.zeros((32, 32, 3), dtype=np.uint8) for _ in range(3))

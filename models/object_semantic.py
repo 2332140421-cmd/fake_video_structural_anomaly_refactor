@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import csv
+import hashlib
 import math
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Mapping
 
 import numpy as np
@@ -22,29 +25,166 @@ from .geometry import build_metric_object_surface
 
 @dataclass(frozen=True)
 class MetricPrior:
+    entry_id: str
     category: str
     dimension: str
     min_meters: float
     max_meters: float
-    orientation_requirement: str
+    dimension_definition: str
+    applicable_scope: str
+    excluded_scope: str
+    confidence: str
     minimum_observability: float
-    source_note: str
+    derivation_id: str
+
+
+@dataclass(frozen=True)
+class ScalePriorRegistry:
+    schema_version: str
+    prior_sha256: str
+    source_table_sha256: str
+    priors_by_label: Mapping[str, MetricPrior]
+    unsupported_by_label: Mapping[str, str]
+
+    def resolve(self, category: str) -> MetricPrior | None:
+        return self.priors_by_label.get(category)
+
+    def unsupported_reason(self, category: str) -> str:
+        return self.unsupported_by_label.get(category, "")
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _exact_labels(row: Mapping[str, Any]) -> tuple[str, ...]:
+    class_name = str(row.get("class_name", ""))
+    aliases = row.get("aliases", ())
+    if not class_name or class_name != class_name.strip():
+        raise ValueError("Scale-prior class_name must be non-empty exact text.")
+    if not isinstance(aliases, list):
+        raise ValueError(f"aliases for {class_name!r} must be a YAML list.")
+    labels = (class_name, *(str(alias) for alias in aliases))
+    if any(not label or label != label.strip() for label in labels):
+        raise ValueError(f"Aliases for {class_name!r} must be non-empty exact text.")
+    if len(labels) != len(set(labels)):
+        raise ValueError(f"Duplicate exact class/alias mapping for {class_name!r}.")
+    return labels
+
+
+def load_scale_prior_registry(path: str | Path) -> ScalePriorRegistry:
+    prior_path = Path(path)
+    payload = yaml.safe_load(prior_path.read_text(encoding="utf-8")) or {}
+    if payload.get("schema_version") != "paper_core_scale_priors_v1":
+        raise ValueError("Unsupported scale-prior schema; formal v1 is required.")
+    if payload.get("unit") != "meter":
+        raise ValueError("Scale-prior unit must be exactly 'meter'.")
+    source_name = payload.get("source_table")
+    if not isinstance(source_name, str) or not source_name:
+        raise ValueError("Formal scale priors require a source_table.")
+    source_path = prior_path.parent / source_name
+    with source_path.open(newline="", encoding="utf-8") as handle:
+        source_reader = csv.DictReader(handle)
+        source_fields = set(source_reader.fieldnames or ())
+        source_rows = list(source_reader)
+    required_source_fields = {
+        "derivation_id",
+        "source_type",
+        "source_title",
+        "publisher",
+        "source_identifier",
+        "source_version",
+        "accessed_at",
+        "sample_count",
+        "raw_measurements_or_range",
+        "derivation_method",
+        "review_status",
+    }
+    if not required_source_fields <= source_fields:
+        raise ValueError("Scale-prior source table is missing required columns.")
+    sources: dict[str, Mapping[str, str]] = {}
+    for row in source_rows:
+        derivation_id = str(row["derivation_id"])
+        if not derivation_id or derivation_id in sources:
+            raise ValueError("Source derivation_id values must be non-empty and unique.")
+        if row["review_status"] != "APPROVED_SOURCE_BACKED":
+            raise ValueError(f"Derivation {derivation_id!r} is not source-approved.")
+        if int(row["sample_count"]) <= 0:
+            raise ValueError(f"Derivation {derivation_id!r} has no source samples.")
+        if any(not str(row[field]).strip() for field in required_source_fields):
+            raise ValueError(f"Derivation {derivation_id!r} has incomplete provenance.")
+        sources[derivation_id] = row
+
+    priors: dict[str, MetricPrior] = {}
+    unsupported: dict[str, str] = {}
+    entry_ids: set[str] = set()
+    for row in payload.get("priors", ()):
+        labels = _exact_labels(row)
+        entry_id = str(row.get("entry_id", ""))
+        derivation_id = str(row.get("derivation_id", ""))
+        dimension = str(row.get("supported_dimension", ""))
+        if not entry_id or entry_id in entry_ids:
+            raise ValueError("Scale-prior entry_id values must be non-empty and unique.")
+        if derivation_id not in sources:
+            raise ValueError(f"Scale prior {entry_id!r} has no approved source derivation.")
+        if dimension not in {"height", "width", "length"}:
+            raise ValueError(f"Scale prior {entry_id!r} uses an unsupported dimension.")
+        minimum = float(row["min_m"])
+        maximum = float(row["max_m"])
+        if not (math.isfinite(minimum) and math.isfinite(maximum) and 0 < minimum < maximum):
+            raise ValueError(f"Scale prior {entry_id!r} must satisfy 0 < min_m < max_m.")
+        confidence = str(row.get("confidence", ""))
+        if confidence not in {"low", "medium", "high"}:
+            raise ValueError(f"Scale prior {entry_id!r} has invalid confidence.")
+        prior = MetricPrior(
+            entry_id=entry_id,
+            category=labels[0],
+            dimension=dimension,
+            min_meters=minimum,
+            max_meters=maximum,
+            dimension_definition=str(row.get("dimension_definition", "")),
+            applicable_scope=str(row.get("applicable_scope", "")),
+            excluded_scope=str(row.get("excluded_scope", "")),
+            confidence=confidence,
+            minimum_observability=float(row.get("minimum_observability", 0.0)),
+            derivation_id=derivation_id,
+        )
+        if not all(
+            (
+                prior.dimension_definition,
+                prior.applicable_scope,
+                prior.excluded_scope,
+            )
+        ):
+            raise ValueError(f"Scale prior {entry_id!r} has incomplete scope definition.")
+        for label in labels:
+            if label in priors or label in unsupported:
+                raise ValueError(f"Ambiguous exact scale-prior mapping for {label!r}.")
+            priors[label] = prior
+        entry_ids.add(entry_id)
+
+    for row in payload.get("unsupported_classes", ()):
+        labels = _exact_labels(row)
+        reason = str(row.get("reason", ""))
+        if reason != "CATEGORY_TOO_BROAD_WITHOUT_SUBTYPE":
+            raise ValueError("Unsupported-class policy must use an explicit approved reason.")
+        for label in labels:
+            if label in priors or label in unsupported:
+                raise ValueError(f"Ambiguous exact scale-prior mapping for {label!r}.")
+            unsupported[label] = reason
+    return ScalePriorRegistry(
+        schema_version=str(payload["schema_version"]),
+        prior_sha256=_sha256(prior_path),
+        source_table_sha256=_sha256(source_path),
+        priors_by_label=MappingProxyType(priors),
+        unsupported_by_label=MappingProxyType(unsupported),
+    )
 
 
 def load_metric_priors(path: str | Path) -> dict[str, MetricPrior]:
-    payload = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
-    return {
-        str(row["category"]): MetricPrior(
-            category=str(row["category"]),
-            dimension=str(row["dimension"]),
-            min_meters=float(row["min_meters"]),
-            max_meters=float(row["max_meters"]),
-            orientation_requirement=str(row.get("orientation_requirement", "")),
-            minimum_observability=float(row.get("minimum_observability", 0.0)),
-            source_note=str(row.get("source_note", "")),
-        )
-        for row in payload.get("metric_scale_priors", ())
-    }
+    """Compatibility view containing only exact and explicit-alias mappings."""
+
+    return dict(load_scale_prior_registry(path).priors_by_label)
 
 
 def _axis_extent(
@@ -216,12 +356,6 @@ def _dimension_observability(
     explicit_pose = str(obj.metadata.get("pose_estimate_status", "unavailable"))
     if explicit_pose not in {item.value for item in PoseEstimateStatus}:
         explicit_pose = PoseEstimateStatus.UNAVAILABLE.value
-    if (
-        explicit_pose == PoseEstimateStatus.UNAVAILABLE.value
-        and container_axis
-        and obj.category in {"cup", "bottle", "vase"}
-    ):
-        explicit_pose = PoseEstimateStatus.UPRIGHT_SHAPE_COMPATIBLE.value
     view = evaluate_object_view(
         ObjectViewInput(
             object_id=obj.object_id,
@@ -301,6 +435,51 @@ def _dimension_observability(
             "axis_diagnostics": axis_diagnostics if dimension == "height" else {},
             "mask_support": dict(mask_support),
         }
+    principal_observable = bool(
+        container_axis
+        and view.valid
+        and math.isfinite(view.border_contact_ratio)
+        and view.border_contact_ratio == 0.0
+    )
+    records["principal_extent"] = {
+        "dimension": "principal_extent",
+        "observable": principal_observable,
+        "reason": (
+            ""
+            if principal_observable
+            else (
+                "border_contact"
+                if math.isfinite(view.border_contact_ratio)
+                and view.border_contact_ratio > 0.0
+                else str(axis_diagnostics.get("reason", "dimension_axis_unavailable"))
+            )
+        ),
+        "axis_source": (
+            "robust_metric_surface_principal_axis_xy"
+            if principal_observable
+            else ""
+        ),
+        "estimated_size_m": (
+            float(axis_diagnostics["estimated_axis_extent_m"])
+            if principal_observable
+            else float("nan")
+        ),
+        "prior_min_m": float("nan"),
+        "prior_max_m": float("nan"),
+        "residual": float("nan"),
+        "confidence": 0.0,
+        "viewpoint_evidence": False,
+        "viewpoint_class": view.viewpoint_class.value,
+        "pose_estimate_status": view.pose_estimate_status.value,
+        "visible_surface_only": True,
+        "axis_diagnostics": axis_diagnostics,
+        "mask_support": dict(mask_support),
+        "category_prior_required": False,
+        "physical_dimension_definition": (
+            "dominant visible metric surface extent; not asserted to be canonical "
+            "height, width, or length"
+        ),
+    }
     return records
 
 
@@ -323,7 +502,7 @@ def compute_object_semantic_residuals(
     max_occlusion_ratio: float = 0.5,
     min_mask_quality: float = 0.3,
 ) -> list[ResidualEvidence]:
-    priors = load_metric_priors(prior_path)
+    registry = load_scale_prior_registry(prior_path)
     output: list[ResidualEvidence] = []
     history: dict[tuple[str, str], list[tuple[int, float, float, str]]] = {}
     for frame in clip.frames:
@@ -356,42 +535,82 @@ def compute_object_semantic_residuals(
                 "old_object_pair_rsd_used": False,
                 "authenticity_label_used": False,
                 "mask_support": dict(mask_support),
+                "class_id": obj.metadata.get("class_id"),
+                "scale_prior_schema_version": registry.schema_version,
+                "scale_prior_sha256": registry.prior_sha256,
+                "scale_prior_source_table_sha256": registry.source_table_sha256,
+                "scale_prior_entry_id": "",
+                "scale_prior_confidence": "",
+                "legacy_container_upright_fallback_used": False,
             }
-            reason = ""
-            prior = priors.get(obj.category)
-            if prior is None:
-                reason = "missing_category_metric_prior"
-            elif obj.instance_mask is None or not np.any(obj.instance_mask):
-                reason = "instance_mask_unavailable"
+            prior = registry.resolve(obj.category)
+            if prior is not None:
+                base_meta.update(
+                    {
+                        "scale_prior_entry_id": prior.entry_id,
+                        "scale_prior_confidence": prior.confidence,
+                        "scale_prior_derivation_id": prior.derivation_id,
+                    }
+                )
+            unsupported = registry.unsupported_reason(obj.category)
+
+            common_reason = ""
+            if obj.instance_mask is None or not np.any(obj.instance_mask):
+                common_reason = "instance_mask_unavailable"
             elif not bool(mask_support["valid"]):
-                reason = str(mask_support["reason"])
+                common_reason = str(mask_support["reason"])
             elif obj.occlusion_ratio > max_occlusion_ratio:
-                reason = "severe_object_occlusion"
+                common_reason = "severe_object_occlusion"
             elif obj.mask_quality < min_mask_quality:
-                reason = "insufficient_mask_quality"
+                common_reason = "insufficient_mask_quality"
             elif not obj.track_identity_stable:
-                reason = "unstable_track_identity"
-            cloud = None if reason else build_metric_object_surface(frame, obj)
-            if not reason and (cloud is None or not cloud.valid):
-                reason = "metric_object_surface_unavailable"
+                common_reason = "unstable_track_identity"
+            cloud = None if common_reason else build_metric_object_surface(frame, obj)
+            if not common_reason and (cloud is None or not cloud.valid):
+                common_reason = "metric_object_surface_unavailable"
             if (
-                not reason
-                and prior is not None
+                not common_reason
+                and cloud is not None
                 and cloud.valid_point_ratio
-                < max(min_depth_coverage, prior.minimum_observability)
+                < min_depth_coverage
             ):
-                reason = "insufficient_valid_metric_depth_ratio"
+                common_reason = "insufficient_valid_metric_depth_ratio"
             dimensions = (
                 {}
                 if cloud is None or not cloud.valid
                 else _dimension_observability(frame, obj, cloud, mask_support)
             )
+            base_meta.update(
+                {
+                    "metric_object_surface_valid": bool(cloud is not None and cloud.valid),
+                    "valid_metric_depth_ratio": (
+                        float(cloud.valid_point_ratio)
+                        if cloud is not None and cloud.valid
+                        else float("nan")
+                    ),
+                }
+            )
+
+            prior_reason = common_reason
+            if prior is None:
+                prior_reason = (
+                    "category_too_broad_without_subtype"
+                    if unsupported
+                    else "missing_category_metric_prior"
+                )
+            elif (
+                not prior_reason
+                and cloud is not None
+                and cloud.valid_point_ratio
+                < max(min_depth_coverage, prior.minimum_observability)
+            ):
+                prior_reason = "insufficient_valid_metric_depth_ratio"
             if prior is not None and prior.dimension in dimensions:
                 selected = dimensions[prior.dimension]
                 selected["prior_min_m"] = prior.min_meters
                 selected["prior_max_m"] = prior.max_meters
-                if not reason and not selected["observable"]:
-                    reason = _unobservable_reason(selected)
+                if not prior_reason and not selected["observable"]:
+                    prior_reason = _unobservable_reason(selected)
                 base_meta.update(
                     {
                         "dimension": prior.dimension,
@@ -400,63 +619,125 @@ def compute_object_semantic_residuals(
                     }
                 )
             base_meta["dimension_observability"] = list(dimensions.values())
-            if reason:
+            if prior_reason:
                 output.append(
                     ResidualEvidence.unavailable(
                         "semantic_metric_prior",
                         "object",
-                        reason,
+                        prior_reason,
                         spatial_support=support,
                         temporal_support={"frame_index": frame.frame_index},
                         metadata=base_meta,
                     )
                 )
+            else:
+                assert prior is not None and cloud is not None
+                selected = dimensions[prior.dimension]
+                estimate = float(selected["estimated_size_m"])
+                residual = _log_interval_distance(
+                    estimate,
+                    prior.min_meters,
+                    prior.max_meters,
+                )
+                confidence = min(
+                    obj.confidence,
+                    obj.mask_quality,
+                    cloud.depth_quality,
+                    cloud.valid_point_ratio,
+                )
+                selected.update(
+                    {
+                        "prior_min_m": prior.min_meters,
+                        "prior_max_m": prior.max_meters,
+                        "residual": residual,
+                        "confidence": confidence,
+                    }
+                )
+                metadata = {
+                    **base_meta,
+                    "dimension": prior.dimension,
+                    "observable": True,
+                    "observability_reason": (
+                        "dimension_axis_and_visible_metric_surface_supported"
+                    ),
+                    "axis_source": selected["axis_source"],
+                    "estimated_size_m": estimate,
+                    "prior_min_m": prior.min_meters,
+                    "prior_max_m": prior.max_meters,
+                    "dimension_definition": prior.dimension_definition,
+                    "applicable_scope": prior.applicable_scope,
+                    "excluded_scope": prior.excluded_scope,
+                    "visible_surface_only": True,
+                    "world_frame_claimed": False,
+                }
+                output.append(
+                    ResidualEvidence.observed(
+                        "semantic_metric_prior",
+                        "object",
+                        residual,
+                        confidence=confidence,
+                        spatial_support=support,
+                        temporal_support={"frame_index": frame.frame_index},
+                        metadata=metadata,
+                    )
+                )
+
+            temporal_reason = common_reason
+            temporal_dimension = ""
+            temporal_record: Mapping[str, Any] | None = None
+            if not temporal_reason:
+                temporal_record = next(
+                    (
+                        dimensions[name]
+                        for name in ("height", "width", "length", "principal_extent")
+                        if bool(dimensions[name]["observable"])
+                    ),
+                    None,
+                )
+                if temporal_record is None:
+                    temporal_reason = (
+                        _unobservable_reason(dimensions["height"])
+                        if dimensions
+                        else "dimension_not_observable"
+                    )
+                else:
+                    temporal_dimension = str(temporal_record["dimension"])
+            temporal_meta = {
+                **base_meta,
+                "dimension": temporal_dimension,
+                "axis_source": (
+                    str(temporal_record["axis_source"])
+                    if temporal_record is not None
+                    else ""
+                ),
+                "category_prior_required": False,
+                "same_clip_only": True,
+            }
+            if temporal_reason:
+                output.append(
+                    ResidualEvidence.unavailable(
+                        "semantic_metric_temporal",
+                        "track",
+                        temporal_reason,
+                        spatial_support=support,
+                        temporal_support={"frame_index": frame.frame_index},
+                        metadata=temporal_meta,
+                    )
+                )
                 continue
-            assert prior is not None and cloud is not None
-            selected = dimensions[prior.dimension]
-            estimate = float(selected["estimated_size_m"])
-            residual = _log_interval_distance(estimate, prior.min_meters, prior.max_meters)
+
+            assert cloud is not None and temporal_record is not None
+            estimate = float(temporal_record["estimated_size_m"])
+            axis_source = str(temporal_record["axis_source"])
             confidence = min(
                 obj.confidence,
                 obj.mask_quality,
                 cloud.depth_quality,
                 cloud.valid_point_ratio,
             )
-            selected.update(
-                {
-                    "prior_min_m": prior.min_meters,
-                    "prior_max_m": prior.max_meters,
-                    "residual": residual,
-                    "confidence": confidence,
-                }
-            )
-            metadata = {
-                **base_meta,
-                "dimension": prior.dimension,
-                "observable": True,
-                "observability_reason": "dimension_axis_and_visible_metric_surface_supported",
-                "axis_source": selected["axis_source"],
-                "estimated_size_m": estimate,
-                "prior_min_m": prior.min_meters,
-                "prior_max_m": prior.max_meters,
-                "source_note": prior.source_note,
-                "visible_surface_only": True,
-                "world_frame_claimed": False,
-            }
-            output.append(
-                ResidualEvidence.observed(
-                    "semantic_metric_prior",
-                    "object",
-                    residual,
-                    confidence=confidence,
-                    spatial_support=support,
-                    temporal_support={"frame_index": frame.frame_index},
-                    metadata=metadata,
-                )
-            )
-            key = (obj.track_id, prior.dimension)
+            key = (obj.track_id, temporal_dimension)
             earlier = history.setdefault(key, [])
-            comparable = [item for item in earlier if item[3] == selected["axis_source"]]
+            comparable = [item for item in earlier if item[3] == axis_source]
             if comparable:
                 reference = float(np.median([value for _, value, _, _ in comparable[-5:]]))
                 temporal = abs(math.log(estimate) - math.log(reference))
@@ -475,10 +756,9 @@ def compute_object_semantic_residuals(
                             "history_frames": [index for index, _, _, _ in comparable[-5:]],
                         },
                         metadata={
-                            "dimension": prior.dimension,
-                            "axis_source": selected["axis_source"],
+                            **temporal_meta,
                             "reference_size_m": reference,
-                            "same_clip_only": True,
+                            "estimated_size_m": estimate,
                         },
                     )
                 )
@@ -495,9 +775,10 @@ def compute_object_semantic_residuals(
                         missing_reason,
                         spatial_support=support,
                         temporal_support={"frame_index": frame.frame_index},
+                        metadata=temporal_meta,
                     )
                 )
             earlier.append(
-                (frame.frame_index, estimate, confidence, str(selected["axis_source"]))
+                (frame.frame_index, estimate, confidence, axis_source)
             )
     return output

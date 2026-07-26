@@ -1,0 +1,70 @@
+schema_version: paper_core_scale_priors_v1
+unit: meter
+source_table: scale_prior_sources_v1.csv
+
+priors:
+  - entry_id: kitti_car_length_q01_q99_v1
+    class_name: car
+    aliases: []
+    supported_dimension: length
+    min_m: 2.94
+    max_m: 4.92
+    dimension_definition: Metric 3D bounding-box length along the vehicle longitudinal axis.
+    applicable_scope: Passenger cars with a reliable lateral or oblique full-object view.
+    excluded_scope: Vans, trucks, trams, misc vehicles, severe truncation, and views without an observable longitudinal axis.
+    confidence: high
+    minimum_observability: 0.50
+    derivation_id: KITTI_CAR_LENGTH_Q01_Q99_V1
+
+  - entry_id: kitti_person_height_q01_q99_v1
+    class_name: person
+    aliases:
+      - pedestrian
+    supported_dimension: height
+    min_m: 1.50
+    max_m: 1.99
+    dimension_definition: Upright full-body pedestrian metric 3D bounding-box height.
+    applicable_scope: Upright full-body pedestrian with a reliable metric vertical axis.
+    excluded_scope: Sitting, crouching, non-upright, heavily occluded, or truncated people.
+    confidence: high
+    minimum_observability: 0.50
+    derivation_id: KITTI_PEDESTRIAN_HEIGHT_Q01_Q99_V1
+
+  - entry_id: objectron_bottle_height_q01_q99_v1
+    class_name: bottle
+    aliases: []
+    supported_dimension: height
+    min_m: 0.137
+    max_m: 0.339
+    dimension_definition: Objectron oriented 3D box y-scale in meters, where the dataset box implementation defines y as height.
+    applicable_scope: Upright bottle-category objects with a reliable metric principal height axis.
+    excluded_scope: Non-upright bottles, bottle-like objects outside the detector's exact bottle class, severe truncation, and unreliable metric axes.
+    confidence: medium
+    minimum_observability: 0.50
+    derivation_id: OBJECTRON_BOTTLE_HEIGHT_Q01_Q99_V1
+
+unsupported_classes:
+  - class_name: truck
+    aliases: []
+    reason: CATEGORY_TOO_BROAD_WITHOUT_SUBTYPE
+  - class_name: handbag
+    aliases: []
+    reason: CATEGORY_TOO_BROAD_WITHOUT_SUBTYPE
+  - class_name: dining_table
+    aliases: []
+    reason: CATEGORY_TOO_BROAD_WITHOUT_SUBTYPE
+  - class_name: chair
+    aliases: []
+    reason: CATEGORY_TOO_BROAD_WITHOUT_SUBTYPE
+  - class_name: cell_phone
+    aliases: []
+    reason: CATEGORY_TOO_BROAD_WITHOUT_SUBTYPE
+  - class_name: bicycle
+    aliases: []
+    reason: CATEGORY_TOO_BROAD_WITHOUT_SUBTYPE
+  - class_name: remote
+    aliases: []
+    reason: CATEGORY_TOO_BROAD_WITHOUT_SUBTYPE
+  - class_name: cup
+    aliases: []
+    reason: CATEGORY_TOO_BROAD_WITHOUT_SUBTYPE

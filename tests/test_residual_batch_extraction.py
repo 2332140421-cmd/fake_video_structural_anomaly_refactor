@@ -1,4 +1,5 @@
 import io
+import csv
 import json
 import zipfile
 from pathlib import Path
@@ -134,6 +135,69 @@ def test_batch_single_comparison_enforces_one_e_minus_six():
     assert residual._compare_payloads(_payload(), _payload())["ready"] is True
     with pytest.raises(ValueError, match="beyond"):
         residual._compare_payloads(_payload(), _payload(delta=2e-6))
+
+
+def test_scale_prior_provenance_reaches_summary_and_final_manifest(tmp_path):
+    payload = _payload()
+    payload["metadata"].update(
+        {
+            "selected_frame_count": 32,
+            "objects_total": 2,
+            "object_tracks": 1,
+            "point_tracks": 3,
+            "overall_coverage": 0.5,
+            "runtime_seconds": 1.0,
+            "peak_gpu_memory_mb": 2.0,
+            "scale_prior_schema_version": "paper_core_scale_priors_v1",
+            "scale_prior_sha256": "prior-hash",
+            "scale_prior_source_table_sha256": "source-hash",
+            "scale_prior_entry_id": ["entry"],
+            "scale_prior_confidence": {"entry": "high"},
+        }
+    )
+    member = {
+        "sample_id": "sample-real",
+        "group_id": "group",
+        "split": "train",
+        "label": "0",
+        "dataset_name": "fixture",
+        "source_video_id": "video",
+        "video_id": "video.mp4",
+        "generator_name": "",
+        "prompt_sha256": "prompt",
+        "local_video_path": "/external/real.mp4",
+        "license_status": "fixture",
+    }
+    summary = residual._summary_row(
+        member,
+        payload,
+        source_sha256="video-hash",
+        provenance_sha256="sampling-hash",
+        result_sha256="result-hash",
+        result_path=tmp_path / "result.json",
+        source_commit="commit",
+        config_sha256="config-hash",
+    )
+    assert summary["scale_prior_sha256"] == "prior-hash"
+    assert summary["scale_prior_source_table_sha256"] == "source-hash"
+    assert json.loads(summary["scale_prior_entry_id"]) == ["entry"]
+
+    fake = {**member, "sample_id": "sample-fake", "label": "1"}
+    fake_summary = {**summary, "sample_id": "sample-fake"}
+    final_path = tmp_path / "final.csv"
+    residual._quality_outputs(
+        rows=[member, fake],
+        summaries=[summary, fake_summary],
+        parent=tmp_path,
+        final_manifest_path=final_path,
+    )
+    with final_path.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert len(rows) == 2
+    assert {row["scale_prior_sha256"] for row in rows} == {"prior-hash"}
+    assert {row["scale_prior_source_table_sha256"] for row in rows} == {
+        "source-hash"
+    }
 
 
 class _Provider:
