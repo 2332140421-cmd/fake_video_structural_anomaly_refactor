@@ -1,0 +1,13 @@
+channel_name,total_clips,available_clips,availability_rate
+semantic_metric_prior,8000,348,0.0435
+semantic_metric_temporal,8000,5230,0.65375
+dynamic_reprojection,8000,6510,0.81375
+track_3d_continuity,8000,6513,0.814125
+direction_consistency,8000,6513,0.814125
+relative_velocity,8000,0,0.0
+point_reprojection,8000,7700,0.9625
+boundary_reprojection,8000,0,0.0
+depth_reprojection,8000,7700,0.9625
+relation,8000,4281,0.535125
+occlusion,8000,0,0.0
+reappearance,8000,0,0.0

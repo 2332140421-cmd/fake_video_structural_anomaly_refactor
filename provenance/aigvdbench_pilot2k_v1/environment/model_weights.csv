@@ -1,0 +1,6 @@
+asset_name,filename,original_path,asset_type,used_for_full2k,size_bytes,sha256
+yolo_detection,yolov8n.pt,/root/autodl-tmp/checkpoints/yolov8n.pt,model_weight,true,6549796,f59b3d833e2ff32e194b5bb8e08d211dc7c5bdf144b90d2c8412c47ccfc83b36
+yolo_segmentation,yolov8n-seg.pt,/root/autodl-tmp/checkpoints/yolov8n-seg.pt,model_weight,true,7071756,a7cd8f929e1903d78a12a48efecab430209f18dc46cb96c3599a5980c63c423c
+yolo_pose,yolov8n-pose.pt,/root/autodl-tmp/checkpoints/yolov8n-pose.pt,model_weight,false,6832633,c6fa93dd1ee4a2c18c900a45c1d864a1c6f7aba75d84f91648a30b7fb641d212
+unidepth_v2_vits14,model.safetensors,/root/autodl-tmp/checkpoints/unidepth-v2-vits14/model.safetensors,model_weight,true,136777580,93705cb3295dd7476b44911b8a55f5215bf74e8d5eccd27cecdb1b338270a648
+unidepth_v2_vits14_config,config.json,/root/autodl-tmp/checkpoints/unidepth-v2-vits14/config.json,model_config,true,3483,ecc1f898690debe387d10329cca5d9d66a0a447ce83c3a2a7ae3673c7ce43cfe

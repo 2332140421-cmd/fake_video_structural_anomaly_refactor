@@ -1,0 +1,50 @@
+{
+  "schema_version": "aigvdbench_pilot2k_environment_v1",
+  "recorded_at_utc": "2026-07-28",
+  "repository": {
+    "origin_url": "https://github.com/2332140421-cmd/fake_video_structural_anomaly.git",
+    "origin_main_commit": "1f7f624b2091bf271587958977bc564529d32578",
+    "paper_core_r3_commit": "c1a230e28541c621d2fbc9a3c24ebabfa193acb7",
+    "full2k_source_commit": "739650c00470f9ed127cdcaa69460abc9d493f5e",
+    "provenance_precommit_head": "739650c00470f9ed127cdcaa69460abc9d493f5e",
+    "provenance_branch": "paper-core-r5b3-full2k-provenance"
+  },
+  "unidepth_source": {
+    "path": "/root/autodl-tmp/projects/third_party/UniDepth",
+    "commit": "8d8cfe4c7ee15297099983607febf0d4f32eb3d6",
+    "worktree_clean": true
+  },
+  "python": {
+    "implementation": "CPython",
+    "version": "3.12.3",
+    "virtual_environment_migrated": false
+  },
+  "pytorch": {
+    "torch": "2.12.1+cu130",
+    "torchvision": "0.27.1+cu130",
+    "torch_cuda": "13.0",
+    "cuda_available": true
+  },
+  "gpu": {
+    "name": "NVIDIA GeForce RTX 5090",
+    "driver": "595.71.05",
+    "memory_mib": 32607,
+    "memory_bytes_reported_by_torch": 33670758400,
+    "compute_capability": "12.0"
+  },
+  "formal_extraction": {
+    "source_config": "configs/default.yaml",
+    "source_config_sha256": "c76ce5268887a3224e7ebd13fc1e5a44325f265148f84770774bf0bf7ff0bf80",
+    "candidate_manifest_sha256": "688c8d7a1995bef1ca23ba42d1072811a7a1be7cae5690cb49773fb598b5dfe9",
+    "local_media_manifest_sha256": "d376d30b1e4fdce7c3e06b2d456f264cc4669bb8ab1f82bb9d21765b019a2d88",
+    "final_residual_manifest_sha256": "93221458f9675b53849a2b66a0574347fe47d26b3420c2fba8e69f72f93bdda8",
+    "sampling_mode": "uniform_full_video",
+    "sampled_frames": 32,
+    "clip_count": 4,
+    "clip_length": 8,
+    "device": "cuda",
+    "workers": 1,
+    "resume": true,
+    "authenticity_label_used": false
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "samples": {
+    "real::Q5sNkRjzVgU_20_54to174": {
+      "channel_order_equal": true,
+      "availability_equal": true,
+      "max_valid_residual_difference": 0.0,
+      "max_confidence_difference": 0.0,
+      "structural_counts_equal": true,
+      "ready": true
+    },
+    "open_sora::Q5sNkRjzVgU_20_54to174": {
+      "channel_order_equal": true,
+      "availability_equal": true,
+      "max_valid_residual_difference": 0.0,
+      "max_confidence_difference": 0.0,
+      "structural_counts_equal": true,
+      "ready": true
+    }
+  },
+  "tolerance": 1e-06,
+  "ready": true
+}

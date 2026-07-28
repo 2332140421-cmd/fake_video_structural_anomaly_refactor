@@ -1,6 +1,7 @@
 # Python environments and generated package metadata
 .venv/
 venv/
+datasets/
 __pycache__/
 *.py[cod]
 *.pyc
@@ -55,6 +56,11 @@ outputs/**
 logs/**
 tmp/**
 cache/**
+caches/**
+*.tmp
+*.temp
+*.part
+*.lock
 
 # Model weights and media are registered by SHA-256, not committed by default.
 checkpoints/
@@ -64,8 +70,13 @@ models/*
 !models/*.py
 *.pt
 *.pth
+*.ckpt
+*.safetensors
 *.onnx
 *.engine
+*.npy
+*.npz
+*.parquet
 *.mp4
 *.avi
 *.mov
@@ -73,6 +84,9 @@ models/*
 *.zip
 *.tar
 *.tar.gz
+*.tgz
+*.tar.bz2
+*.tar.xz
 
 # Machine-specific audit notes are retained locally unless manually reviewed.
 docs/DISK_USAGE_AUDIT.md

@@ -1,0 +1,19 @@
+{
+  "source_commit": "739650c00470f9ed127cdcaa69460abc9d493f5e",
+  "source_config_sha256": "c76ce5268887a3224e7ebd13fc1e5a44325f265148f84770774bf0bf7ff0bf80",
+  "sampler_version": "uniform_full_video_integer_v1",
+  "pipeline_initialization_count": 1,
+  "completed": 2000,
+  "failed": 0,
+  "total": 2000,
+  "elapsed_seconds": 112062.90310283471,
+  "authenticity_label_used": false,
+  "group_summary": {
+    "group_count": 1000,
+    "complete_group_count": 1000,
+    "final_manifest_row_count": 2000
+  },
+  "batch_single_equivalence_ready": true,
+  "final_manifest": "/root/autodl-tmp/datasets/aigvdbench_pilot_v1/manifests/aigvdbench_open_sora_paired_2k_residual_v1.csv",
+  "final_manifest_sha256": "93221458f9675b53849a2b66a0574347fe47d26b3420c2fba8e69f72f93bdda8"
+}

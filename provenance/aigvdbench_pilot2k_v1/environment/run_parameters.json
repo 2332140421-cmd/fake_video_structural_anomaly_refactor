@@ -1,0 +1,17 @@
+{
+  "schema_version": "aigvdbench_pilot2k_residual_run_v1",
+  "wrapper": "scripts/run_extract_residuals.sh",
+  "manifest": "/root/autodl-tmp/datasets/aigvdbench_pilot_v1/media_inventory/full2k/local_media_manifest.csv",
+  "config": "/root/autodl-tmp/projects/fake_video_structural_anomaly_refactor/configs/default.yaml",
+  "output": "/root/autodl-tmp/outputs/paper_core_r5b3/aigvdbench_pilot2k_residuals_v1",
+  "sampling_mode": "uniform_full_video",
+  "sampled_frames": 32,
+  "clip_length": 8,
+  "clip_count": 4,
+  "device": "cuda",
+  "resume": true,
+  "log_every": 50,
+  "workers": 1,
+  "single_python_process": true,
+  "source_commit": "739650c00470f9ed127cdcaa69460abc9d493f5e"
+}
