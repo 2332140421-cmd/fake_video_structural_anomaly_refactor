@@ -73,6 +73,20 @@ def _pipeline(config_path: str | Path) -> tuple[ForgeryAnalysisPipeline, dict]:
     )
 
 
+def _positive_integer(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(
+            "--epochs must be an integer greater than or equal to 1"
+        ) from error
+    if parsed < 1:
+        raise argparse.ArgumentTypeError(
+            "--epochs must be an integer greater than or equal to 1"
+        )
+    return parsed
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--verbose", action="store_true")
@@ -90,7 +104,13 @@ def _parser() -> argparse.ArgumentParser:
         help="read-only server path mapping; frozen provenance is not rewritten",
     )
     train.add_argument("--config", default="configs/training_default.yaml")
-    train.add_argument("--epochs", type=int, default=3, choices=(1, 2, 3, 4, 5))
+    train.add_argument(
+        "--epochs",
+        type=_positive_integer,
+        default=3,
+        metavar="N",
+        help="number of epochs; N must be an integer greater than or equal to 1",
+    )
     train.add_argument("--output", required=True)
     train.add_argument("--channel-schema")
     train.add_argument("--batch-size", type=int)
