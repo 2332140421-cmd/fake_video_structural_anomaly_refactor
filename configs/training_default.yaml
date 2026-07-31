@@ -1,6 +1,12 @@
 data:
   classification_threshold: 0.5
 
+# Paper runs fail closed on global sample/clip and source identity overlap.
+leakage_check:
+  enabled: true
+  mode: strict
+  scope: source
+
 training:
   epochs: 3
   batch_size: 2

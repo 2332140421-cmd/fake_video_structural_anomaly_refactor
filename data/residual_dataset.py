@@ -14,6 +14,9 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
+from data.leakage import audit_split_leakage
+from data.runtime_paths import relocate_manifest_rows
+
 RESIDUAL_NAMES = (
     "semantic_metric_prior",
     "semantic_metric_temporal",
@@ -64,6 +67,8 @@ class TrainingManifestBundle:
     manifest_path: str
     manifest_sha256: str
     manifest_rows: tuple[Mapping[str, str], ...]
+    leakage_audit: Mapping[str, Any]
+    runtime_path_manifest: str | None = None
 
     @property
     def config_sha256(self) -> str:
@@ -260,11 +265,19 @@ def _schema_from_rows(rows: Sequence[Mapping[str, str]]) -> dict[str, Any]:
 def build_manifest_samples(
     manifest_path: str | Path,
     channel_schema_path: str | Path | Mapping[str, Any] | None = None,
+    *,
+    runtime_path_manifest: str | Path | None = None,
+    leakage_check: Mapping[str, Any] | None = None,
 ) -> TrainingManifestBundle:
     """Load frozen results without provider construction or random splitting."""
 
     resolved_manifest = Path(manifest_path).resolve()
-    rows = _read_training_manifest(resolved_manifest)
+    provenance_rows = _read_training_manifest(resolved_manifest)
+    rows = (
+        relocate_manifest_rows(provenance_rows, runtime_path_manifest)
+        if runtime_path_manifest is not None
+        else provenance_rows
+    )
     if channel_schema_path is None:
         schema = _schema_from_rows(rows)
     elif isinstance(channel_schema_path, Mapping):
@@ -272,21 +285,8 @@ def build_manifest_samples(
     else:
         schema = load_channel_schema(channel_schema_path)
     output: dict[str, list[ResidualSequence]] = {split: [] for split in SPLITS}
-    split_values: dict[str, dict[str, set[str]]] = {
-        split: {
-            key: set()
-            for key in (
-                "sample_id",
-                "source_video_id",
-                "group_id",
-                "residual_sequence_path",
-                "source_video_path",
-                "clip_id",
-            )
-        }
-        for split in SPLITS
-    }
-    global_sample_ids: set[str] = set()
+    leakage_records: list[dict[str, Any]] = []
+    sample_splits: dict[str, set[str]] = {}
     source_commits: set[str] = set()
     config_hashes: set[str] = set()
     for row in rows:
@@ -299,9 +299,10 @@ def build_manifest_samples(
         group_id = row["group_id"].strip()
         if not all((sample_id, dataset_name, source_video_id, group_id)):
             raise ValueError("Manifest identities must be non-empty.")
-        if sample_id in global_sample_ids:
+        seen_splits = sample_splits.setdefault(sample_id, set())
+        if split in seen_splits:
             raise ValueError(f"Duplicate sample_id: {sample_id!r}.")
-        global_sample_ids.add(sample_id)
+        seen_splits.add(split)
         label = int(row["label"])
         if label not in {0, 1}:
             raise ValueError("Training labels must be 0 or 1.")
@@ -315,7 +316,11 @@ def build_manifest_samples(
             if not source_video.is_file():
                 raise FileNotFoundError(f"{sample_id}: optional source video is missing.")
             payload_video = str(payload.get("video_path", "")).strip()
-            if payload_video and Path(payload_video).resolve() != source_video:
+            if (
+                payload_video
+                and row.get("_runtime_relocated") != "true"
+                and Path(payload_video).resolve() != source_video
+            ):
                 raise ValueError(f"{sample_id}: result video path does not match manifest.")
         metadata = payload.get("metadata", {})
         if bool(metadata.get("authenticity_label_used", False)):
@@ -342,26 +347,26 @@ def build_manifest_samples(
             source_commits.add(source_commit)
         if source_config:
             config_hashes.add(source_config)
-        split_values[split]["sample_id"].add(sample_id)
-        split_values[split]["source_video_id"].add(source_video_id)
-        split_values[split]["group_id"].add(group_id)
-        split_values[split]["residual_sequence_path"].add(str(residual_path))
-        if source_video_raw:
-            split_values[split]["source_video_path"].add(str(source_video))
-        split_values[split]["clip_id"].update(sequence.clip_ids)
+        leakage_records.append(
+            {
+                "split": split,
+                "sample_id": sample_id,
+                "clip_ids": sequence.clip_ids,
+                "dataset_name": dataset_name,
+                "source_video_id": source_video_id,
+                "group_id": group_id,
+                "source_video_sha256": row.get("source_video_sha256", "").strip(),
+                "source_video_path": str(source_video) if source_video_raw else "",
+                "residual_sequence_path": str(residual_path),
+            }
+        )
     expected_commit = str(schema["source_commit"])
     expected_config = str(schema["source_config_sha256"])
     if source_commits and source_commits != {expected_commit}:
         raise ValueError("Manifest and channel schema source commits differ.")
     if config_hashes and config_hashes != {expected_config}:
         raise ValueError("Manifest and channel schema config identities differ.")
-    for left_index, left in enumerate(SPLITS):
-        for right in SPLITS[left_index + 1 :]:
-            for key in split_values[left]:
-                if split_values[left][key] & split_values[right][key]:
-                    raise ValueError(
-                        f"Cross-split leakage detected for {key}: {left}/{right}."
-                    )
+    leakage_audit = audit_split_leakage(leakage_records, leakage_check)
     if not output["train"] or not output["validation"]:
         raise ValueError("Manifest requires non-empty train and validation splits.")
     manifest_sha256 = hashlib.sha256(resolved_manifest.read_bytes()).hexdigest()
@@ -377,6 +382,12 @@ def build_manifest_samples(
         manifest_path=str(resolved_manifest),
         manifest_sha256=manifest_sha256,
         manifest_rows=tuple(dict(row) for row in rows),
+        leakage_audit=leakage_audit,
+        runtime_path_manifest=(
+            str(Path(runtime_path_manifest).resolve())
+            if runtime_path_manifest is not None
+            else None
+        ),
     )
 
 
@@ -427,6 +438,7 @@ __all__ = [
     "ResidualSequence",
     "ResidualSequenceDataset",
     "TrainingManifestBundle",
+    "audit_split_leakage",
     "build_manifest_samples",
     "collate_residual_sequences",
     "load_channel_schema",

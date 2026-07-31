@@ -85,6 +85,10 @@ def _parser() -> argparse.ArgumentParser:
     analyze.add_argument("--max-clips", type=int)
     train = commands.add_parser("train", help="train only the residual temporal head")
     train.add_argument("--manifest", required=True)
+    train.add_argument(
+        "--runtime-path-manifest",
+        help="read-only server path mapping; frozen provenance is not rewritten",
+    )
     train.add_argument("--config", default="configs/training_default.yaml")
     train.add_argument("--epochs", type=int, default=3, choices=(3, 4, 5))
     train.add_argument("--output", required=True)
@@ -138,7 +142,13 @@ def _print_data_preflight(bundle) -> None:
         if count == 0:
             raise ValueError(f"Training gate failed: no valid {name} evidence.")
     print(f"[DATA] channel_names={list(RESIDUAL_NAMES)}")
-    print("[DATA] leakage_check=PASS", flush=True)
+    audit = bundle.leakage_audit
+    print(
+        "[DATA] leakage_check="
+        f"{audit['status']} mode={audit['mode']} scope={audit['scope']} "
+        f"finding_count={audit['finding_count']}",
+        flush=True,
+    )
 
 
 def main() -> int:
@@ -162,7 +172,12 @@ def main() -> int:
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     if not isinstance(config, dict):
         raise ValueError("Training config root must be a mapping.")
-    bundle = build_manifest_samples(arguments.manifest, arguments.channel_schema)
+    bundle = build_manifest_samples(
+        arguments.manifest,
+        arguments.channel_schema,
+        runtime_path_manifest=arguments.runtime_path_manifest,
+        leakage_check=config.get("leakage_check"),
+    )
     training = config["training"]
     data = config["data"]
     model = config["model"]
@@ -192,6 +207,7 @@ def main() -> int:
         "training": final_training,
         "model": model,
         "metrics": config["metrics"],
+        "leakage_check": config.get("leakage_check", {}),
         "source_config_path": str(config_path),
         "resume": str(Path(arguments.resume).resolve()) if arguments.resume else None,
     }
