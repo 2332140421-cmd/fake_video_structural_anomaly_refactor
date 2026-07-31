@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import math
 import random
-import sys
 import time
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -34,7 +34,7 @@ from experiments.artifacts import (
 )
 from experiments.metrics import binary_classification_metrics, sigmoid
 from models.temporal_head import ResidualTemporalHead
-from utils.io import ensure_output_dir, write_csv, write_json
+from utils.io import ensure_output_dir, json_safe, write_csv, write_json
 
 
 def binary_metrics(
@@ -100,9 +100,6 @@ def _run_epoch(
     total_epochs: int,
     global_step: int,
     log_every: int,
-    progress_enabled: bool = True,
-    progress_update_interval: int = 1,
-    progress_log_interval: int = 20,
     phase_name: str | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], int]:
     training = optimizer is not None
@@ -115,7 +112,6 @@ def _run_epoch(
     batch_rows: list[dict[str, Any]] = []
     samples_seen = 0
     iterator = iter(loader)
-    interactive_progress = progress_enabled and sys.stdout.isatty()
     for batch_index in range(1, len(loader) + 1):
         data_started = time.perf_counter()
         (
@@ -198,37 +194,6 @@ def _run_epoch(
             "global_step": global_step,
         }
         batch_rows.append(row)
-        phase = phase_name or ("Train" if training else "Validation")
-        learning_rate_text = (
-            f"{row['learning_rate']:.3e}"
-            if row["learning_rate"] is not None
-            else "n/a"
-        )
-        progress_line = (
-            f"[{phase}] epoch={epoch}/{total_epochs} "
-            f"batch={batch_index}/{len(loader)} "
-            f"loss={row['batch_loss']:.6f} "
-            f"avg_loss={row['running_loss']:.6f} "
-            f"lr={learning_rate_text} "
-            f"data={data_seconds:.3f}s step={step_seconds:.3f}s "
-            f"gpu_peak={row['gpu_peak_memory_mb']:.1f}MiB"
-        )
-        if interactive_progress and (
-            batch_index % max(progress_update_interval, 1) == 0
-            or batch_index == len(loader)
-        ):
-            print(f"\r{progress_line}", end="", flush=True)
-        elif progress_enabled and (
-            batch_index % max(progress_log_interval, 1) == 0
-            or batch_index == len(loader)
-        ):
-            print(progress_line, flush=True)
-        elif not progress_enabled and training and (
-            batch_index % log_every == 0 or batch_index == len(loader)
-        ):
-            print(progress_line, flush=True)
-    if interactive_progress:
-        print()
     metrics = binary_classification_metrics(
         labels,
         logits,
@@ -299,27 +264,29 @@ def _print_epoch(
     learning_rate: float,
     runtime: float,
     peak_memory: float,
-    checkpoint: Path,
 ) -> None:
-    print(f"[EPOCH] epoch={epoch}/{total_epochs}")
-    for name in (
-        "loss",
-        "accuracy",
-        "precision",
-        "recall",
-        "specificity",
-        "f1",
-        "roc_auc",
-        "pr_auc",
-    ):
-        print(
-            f"train_{name}={_metric_display(train[name])} "
-            f"validation_{name}={_metric_display(validation[name])}"
+    def metrics(prefix: str, values: Mapping[str, Any]) -> str:
+        return " ".join(
+            (
+                f"{prefix} loss={_metric_display(values['loss'])}",
+                f"acc={_metric_display(values['accuracy'])}",
+                f"precision={_metric_display(values['precision'])}",
+                f"recall={_metric_display(values['recall'])}",
+                f"specificity={_metric_display(values['specificity'])}",
+                f"f1={_metric_display(values['f1'])}",
+                f"roc_auc={_metric_display(values['roc_auc'])}",
+                f"pr_auc={_metric_display(values['pr_auc'])}",
+            )
         )
-    print(f"lr={learning_rate:.6e}")
-    print(f"runtime={runtime:.3f}s")
-    print(f"peak_gpu_memory={peak_memory:.1f}MiB")
-    print(f"checkpoint={checkpoint.resolve()}", flush=True)
+
+    print(
+        f"Epoch {epoch:03d}/{total_epochs:03d} | "
+        f"{metrics('train', train)} | "
+        f"{metrics('val', validation)} | "
+        f"lr={learning_rate:.6e} time={runtime:.3f}s "
+        f"gpu_peak={peak_memory:.1f}MiB",
+        flush=True,
+    )
 
 
 def _checkpoint_state(
@@ -384,15 +351,15 @@ def train_residual_head(
     log_every: int = 1,
     checkpoint_every: int = 1,
     classification_threshold: float = 0.5,
-    progress_enabled: bool = True,
-    progress_update_interval: int = 1,
-    progress_log_interval: int = 20,
+    progress_mode: str = "epoch",
     bundle: TrainingManifestBundle | None = None,
 ) -> tuple[ResidualTemporalHead, list[dict[str, Any]]]:
-    if not 1 <= epochs <= 5:
-        raise ValueError("Training is intentionally limited to 1-5 epochs.")
+    if epochs < 1:
+        raise ValueError("epochs must be an integer greater than or equal to 1.")
     if log_every < 1 or checkpoint_every < 1:
         raise ValueError("log_every and checkpoint_every must be positive.")
+    if progress_mode not in {"epoch", "none"}:
+        raise ValueError("progress_mode must be 'epoch' or 'none'.")
     schema = validate_channel_schema(channel_schema)
     producer_config = source_config_sha256 or config_sha256
     if not producer_config:
@@ -432,16 +399,19 @@ def train_residual_head(
         "amp": bool(amp),
         "device": device,
         "classification_threshold": classification_threshold,
-        "progress": {
-            "enabled": bool(progress_enabled),
-            "update_interval": int(progress_update_interval),
-            "log_interval": int(progress_log_interval),
-        },
+        "progress": {"mode": progress_mode},
     }
     model = ResidualTemporalHead(residual_count, hidden_size=hidden_size)
     if model.parameter_count >= 100_000:
         raise ValueError("Temporal fusion head exceeds the 100k parameter limit.")
-    print(f"[MODEL] parameter_count={model.parameter_count}", flush=True)
+    print(
+        f"[RUN] output={output.resolve()} device={device} "
+        f"train_samples={len(train_samples)} "
+        f"validation_samples={len(validation_samples)} "
+        f"batch_size={batch_size} epochs={epochs} "
+        f"parameter_count={model.parameter_count}",
+        flush=True,
+    )
     torch_device = torch.device(device)
     model.to(torch_device)
     optimizer = torch.optim.AdamW(
@@ -539,6 +509,9 @@ def train_residual_head(
     backward_count = 0
     nonfinite_loss_count = 0
     data_loading_seconds = 0.0
+    epoch_metrics_path = output / "logs" / "epoch_metrics.jsonl"
+    if resume is None:
+        epoch_metrics_path.write_text("", encoding="utf-8")
     for epoch in range(start_epoch + 1, epochs + 1):
         if torch_device.type == "cuda":
             torch.cuda.reset_peak_memory_stats(torch_device)
@@ -556,9 +529,6 @@ def train_residual_head(
             total_epochs=epochs,
             global_step=global_step,
             log_every=log_every,
-            progress_enabled=progress_enabled,
-            progress_update_interval=progress_update_interval,
-            progress_log_interval=progress_log_interval,
             phase_name="Train",
         )
         train_metrics, train_evaluation_batches, global_step = _run_epoch(
@@ -573,9 +543,6 @@ def train_residual_head(
             total_epochs=epochs,
             global_step=global_step,
             log_every=log_every,
-            progress_enabled=progress_enabled,
-            progress_update_interval=progress_update_interval,
-            progress_log_interval=progress_log_interval,
             phase_name="TrainEval",
         )
         validation_metrics, validation_batches, global_step = _run_epoch(
@@ -590,9 +557,6 @@ def train_residual_head(
             total_epochs=epochs,
             global_step=global_step,
             log_every=log_every,
-            progress_enabled=progress_enabled,
-            progress_update_interval=progress_update_interval,
-            progress_log_interval=progress_log_interval,
             phase_name="Validation",
         )
         if torch_device.type == "cuda":
@@ -679,21 +643,24 @@ def train_residual_head(
             ):
                 record[f"{prefix}_{name}"] = metrics[name]
         history.append(record)
+        with epoch_metrics_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(json_safe(record), ensure_ascii=False) + "\n")
+            handle.flush()
         batch_history.extend(train_batches)
         batch_history.extend(train_evaluation_batches)
         batch_history.extend(validation_batches)
         final_train = train_metrics
         final_validation = validation_metrics
-        _print_epoch(
-            epoch,
-            epochs,
-            train_metrics,
-            validation_metrics,
-            learning_rate=optimizer.param_groups[0]["lr"],
-            runtime=runtime,
-            peak_memory=peak_memory,
-            checkpoint=checkpoint_path,
-        )
+        if progress_mode == "epoch":
+            _print_epoch(
+                epoch,
+                epochs,
+                train_metrics,
+                validation_metrics,
+                learning_rate=optimizer.param_groups[0]["lr"],
+                runtime=runtime,
+                peak_memory=peak_memory,
+            )
     batch_fields = list(batch_history[0])
     write_csv(output / "logs" / "batch_history.csv", batch_history, batch_fields)
     epoch_fields = list(history[0])

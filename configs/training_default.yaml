@@ -9,7 +9,7 @@ leakage_check:
   scope: source
 
 training:
-  epochs: 3
+  epochs: 50
   batch_size: 2
   learning_rate: 0.001
   weight_decay: 0.0001
@@ -20,9 +20,7 @@ training:
   amp: true
   device: cuda
   progress:
-    enabled: true
-    update_interval: 1
-    log_interval: 20
+    mode: epoch
 
 model:
   hidden_size: 32

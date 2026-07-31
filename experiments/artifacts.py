@@ -98,6 +98,10 @@ def initialize_run_artifacts(
         yaml.safe_dump(config_payload, sort_keys=False),
         encoding="utf-8",
     )
+    (output / "resolved_config.yaml").write_text(
+        yaml.safe_dump(config_payload, sort_keys=False),
+        encoding="utf-8",
+    )
     write_json(
         output / "run_manifest.json",
         {
@@ -137,6 +141,33 @@ def initialize_run_artifacts(
         ],
     )
     write_json(output / "residual_channel_schema.json", bundle.channel_schema)
+    eligibility_rows = [
+        report.as_dict() for report in bundle.eligibility_reports
+    ]
+    write_json(
+        output / "eligibility_summary.json",
+        bundle.eligibility_summary or {},
+    )
+    write_csv(
+        output / "eligibility_report.csv",
+        eligibility_rows,
+        fieldnames=list(eligibility_rows[0]) if eligibility_rows else [
+            "sample_id",
+            "split",
+            "label",
+            "residual_path",
+            "clip_count",
+            "residual_record_count",
+            "valid_count",
+            "observed_count",
+            "blocked_by_input_count",
+            "not_applicable_count",
+            "eligibility_status",
+            "exclusion_reason",
+            "model_eligible",
+        ],
+    )
+    write_json(output / "leakage_audit.json", bundle.leakage_audit)
     write_csv(
         output / "split_snapshot.csv",
         bundle.manifest_rows,

@@ -6,9 +6,9 @@ PROJECT_ROOT="${PROJECT_ROOT:-${BASE_ROOT}/projects/fake_video_structural_anomal
 PROJECT_PYTHON="${PROJECT_PYTHON:-${BASE_ROOT}/envs/fake_video_structural_anomaly/bin/python}"
 TRAINING_MANIFEST="${TRAINING_MANIFEST:-${PROJECT_ROOT}/provenance/aigvdbench_pilot2k_v1/manifests/aigvdbench_open_sora_paired_2k_residual_v1.csv}"
 RUNTIME_PATH_MANIFEST="${RUNTIME_PATH_MANIFEST:-${BASE_ROOT}/migration/aigvd_full2k_v1/reports/server_restore_audit/full2k_media_manifest_server.csv}"
+
 TRAINING_CONFIG="${TRAINING_CONFIG:-${PROJECT_ROOT}/configs/training_default.yaml}"
-OUTPUT_ROOT="${OUTPUT_ROOT:-${BASE_ROOT}/outputs/training_pilot/full2k_temporal_head_1epoch_v1}"
-EPOCHS="${EPOCHS:-1}"
+OUTPUT_ROOT="${OUTPUT_ROOT:-${BASE_ROOT}/outputs/training_runs/full2k_temporal_head_v1}"
 
 if [[ ! -x "${PROJECT_PYTHON}" ]]; then
   echo "Project Python is not executable: ${PROJECT_PYTHON}" >&2
@@ -45,7 +45,6 @@ command=(
   --config "${TRAINING_CONFIG}"
   --manifest "${TRAINING_MANIFEST}"
   --runtime-path-manifest "${RUNTIME_PATH_MANIFEST}"
-  --epochs "${EPOCHS}"
   --output "${run_dir}"
 )
 

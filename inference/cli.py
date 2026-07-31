@@ -73,20 +73,6 @@ def _pipeline(config_path: str | Path) -> tuple[ForgeryAnalysisPipeline, dict]:
     )
 
 
-def _positive_integer(value: str) -> int:
-    try:
-        parsed = int(value)
-    except ValueError as error:
-        raise argparse.ArgumentTypeError(
-            "--epochs must be an integer greater than or equal to 1"
-        ) from error
-    if parsed < 1:
-        raise argparse.ArgumentTypeError(
-            "--epochs must be an integer greater than or equal to 1"
-        )
-    return parsed
-
-
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--verbose", action="store_true")
@@ -104,48 +90,15 @@ def _parser() -> argparse.ArgumentParser:
         help="read-only server path mapping; frozen provenance is not rewritten",
     )
     train.add_argument("--config", default="configs/training_default.yaml")
-    train.add_argument(
-        "--epochs",
-        type=_positive_integer,
-        default=3,
-        metavar="N",
-        help="number of epochs; N must be an integer greater than or equal to 1",
-    )
     train.add_argument("--output", required=True)
-    train.add_argument("--channel-schema")
-    train.add_argument("--batch-size", type=int)
-    train.add_argument("--learning-rate", type=float)
-    train.add_argument("--weight-decay", type=float)
-    train.add_argument("--seed", type=int)
-    train.add_argument("--device")
-    train.add_argument("--num-workers", type=int)
-    train.add_argument("--log-every", type=int)
-    train.add_argument("--classification-threshold", type=float)
-    amp = train.add_mutually_exclusive_group()
-    amp.add_argument("--amp", dest="amp", action="store_true")
-    amp.add_argument("--no-amp", dest="amp", action="store_false")
-    train.set_defaults(amp=None)
-    train.add_argument("--resume")
     return parser
 
 
-def _training_value(arguments, section: dict, name: str):
-    value = getattr(arguments, name)
-    return section[name] if value is None else value
-
-
-def _print_data_preflight(bundle) -> None:
-    from experiments.train import RESIDUAL_NAMES, sequence_statistics
-
-    for split in ("train", "validation", "test"):
+def _validate_data_preflight(bundle) -> None:
+    for split in ("train", "validation"):
         samples = bundle.samples[split]
         if not samples:
-            print(f"[DATA] split={split} video_count=0")
-            continue
-        stats = sequence_statistics(samples)
-        print(f"[DATA] split={split}")
-        for key, value in stats.items():
-            print(f"{key}={value}")
+            raise ValueError(f"{split} must not be empty.")
         if {sample.label for sample in samples} != {0, 1}:
             raise ValueError(f"{split} must contain both real and fake samples.")
     combined = bundle.samples["train"] + bundle.samples["validation"]
@@ -158,30 +111,8 @@ def _print_data_preflight(bundle) -> None:
         count = sum(
             int(sample.availability[:, indices].sum()) for sample in combined
         )
-        print(f"[DATA] {name}_available_value_count={count}")
         if count == 0:
             raise ValueError(f"Training gate failed: no valid {name} evidence.")
-    print(f"[DATA] channel_names={list(RESIDUAL_NAMES)}")
-    eligibility = bundle.eligibility_summary or {}
-    for split, summary in eligibility.get("splits", {}).items():
-        print(
-            f"[ELIGIBILITY] split={split} "
-            f"original={summary['original_count']} "
-            f"eligible={summary['eligible_count']} "
-            f"excluded={summary['excluded_count']} "
-            f"coverage={summary['coverage']:.6f}"
-        )
-    print(
-        "[ELIGIBILITY] status_counts="
-        f"{eligibility.get('status_counts', {})}"
-    )
-    audit = bundle.leakage_audit
-    print(
-        "[DATA] leakage_check="
-        f"{audit['status']} mode={audit['mode']} scope={audit['scope']} "
-        f"finding_count={audit['finding_count']}",
-        flush=True,
-    )
 
 
 def main() -> int:
@@ -207,57 +138,46 @@ def main() -> int:
         raise ValueError("Training config root must be a mapping.")
     bundle = build_manifest_samples(
         arguments.manifest,
-        arguments.channel_schema,
+        None,
         runtime_path_manifest=arguments.runtime_path_manifest,
-        leakage_check=config.get("leakage_check"),
+        leakage_check=config["leakage_check"],
         load_splits=("train", "validation"),
-        no_valid_residual_policy=config.get("data", {}).get(
-            "no_valid_residual_policy", "error"
-        ),
+        no_valid_residual_policy=config["data"]["no_valid_residual_policy"],
     )
     training = config["training"]
     data = config["data"]
     model = config["model"]
     final_training = {
-        "epochs": arguments.epochs,
-        "batch_size": int(_training_value(arguments, training, "batch_size")),
-        "learning_rate": float(
-            _training_value(arguments, training, "learning_rate")
-        ),
-        "weight_decay": float(
-            _training_value(arguments, training, "weight_decay")
-        ),
-        "seed": int(_training_value(arguments, training, "seed")),
-        "num_workers": int(_training_value(arguments, training, "num_workers")),
-        "log_every": int(_training_value(arguments, training, "log_every")),
+        "epochs": int(training["epochs"]),
+        "batch_size": int(training["batch_size"]),
+        "learning_rate": float(training["learning_rate"]),
+        "weight_decay": float(training["weight_decay"]),
+        "seed": int(training["seed"]),
+        "num_workers": int(training["num_workers"]),
+        "log_every": int(training["log_every"]),
         "checkpoint_every": int(training["checkpoint_every"]),
-        "amp": bool(training["amp"] if arguments.amp is None else arguments.amp),
-        "device": str(_training_value(arguments, training, "device")),
-        "progress": dict(training.get("progress", {})),
+        "amp": bool(training["amp"]),
+        "device": str(training["device"]),
+        "progress": dict(training["progress"]),
     }
-    threshold = float(
-        data["classification_threshold"]
-        if arguments.classification_threshold is None
-        else arguments.classification_threshold
-    )
+    threshold = float(data["classification_threshold"])
     run_config = {
         "data": {**data, "classification_threshold": threshold},
         "training": final_training,
         "model": model,
         "metrics": config["metrics"],
-        "leakage_check": config.get("leakage_check", {}),
+        "ablation": config["ablation"],
+        "leakage_check": config["leakage_check"],
         "eligibility": {
-            "no_valid_residual_policy": data.get(
-                "no_valid_residual_policy", "error"
-            ),
+            "no_valid_residual_policy": data["no_valid_residual_policy"],
             "loaded_splits": ["train", "validation"],
         },
         "source_config_path": str(config_path),
-        "resume": str(Path(arguments.resume).resolve()) if arguments.resume else None,
+        "resume": None,
     }
     if int(model["expected_input_channels"]) != 12:
         raise ValueError("Training config must expect exactly 12 residual channels.")
-    _print_data_preflight(bundle)
+    _validate_data_preflight(bundle)
     project_root = Path(__file__).resolve().parents[1]
     initialize_run_artifacts(
         arguments.output,
@@ -265,8 +185,6 @@ def main() -> int:
         run_config=run_config,
         project_root=project_root,
     )
-    print("[MODEL] name=ResidualTemporalHead")
-    print(f"[MODEL] hidden_size={int(model.get('hidden_size', 32))}")
     train_residual_head(
         bundle.samples["train"],
         bundle.samples["validation"],
@@ -275,28 +193,20 @@ def main() -> int:
         source_commit=bundle.source_commit,
         source_config_sha256=bundle.source_config_sha256,
         manifest_sha256=bundle.manifest_sha256,
-        epochs=arguments.epochs,
-        hidden_size=int(model.get("hidden_size", 32)),
+        epochs=final_training["epochs"],
+        hidden_size=int(model["hidden_size"]),
         learning_rate=final_training["learning_rate"],
         weight_decay=final_training["weight_decay"],
         batch_size=final_training["batch_size"],
         random_seed=final_training["seed"],
-        resume=arguments.resume,
+        resume=None,
         device=final_training["device"],
         amp=final_training["amp"],
         num_workers=final_training["num_workers"],
         log_every=final_training["log_every"],
         checkpoint_every=final_training["checkpoint_every"],
         classification_threshold=threshold,
-        progress_enabled=bool(
-            training.get("progress", {}).get("enabled", True)
-        ),
-        progress_update_interval=int(
-            training.get("progress", {}).get("update_interval", 1)
-        ),
-        progress_log_interval=int(
-            training.get("progress", {}).get("log_interval", 20)
-        ),
+        progress_mode=str(final_training["progress"]["mode"]),
         bundle=bundle,
     )
     return 0

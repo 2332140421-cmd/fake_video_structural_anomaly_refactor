@@ -61,6 +61,8 @@ def evaluate_checkpoint(
     device: str = "cuda",
     num_workers: int = 0,
     classification_threshold: float | None = None,
+    runtime_path_manifest: str | Path | None = None,
+    no_valid_residual_policy: str = "error",
 ) -> dict[str, Any]:
     if split not in {"train", "validation", "test"}:
         raise ValueError(f"Unsupported evaluation split: {split!r}.")
@@ -86,7 +88,13 @@ def evaluate_checkpoint(
     missing = sorted(required - set(checkpoint))
     if missing:
         raise ValueError(f"Checkpoint is missing evaluation provenance: {missing}.")
-    bundle = build_manifest_samples(manifest_path, checkpoint["channel_schema"])
+    bundle = build_manifest_samples(
+        manifest_path,
+        checkpoint["channel_schema"],
+        runtime_path_manifest=runtime_path_manifest,
+        load_splits=(split,),
+        no_valid_residual_policy=no_valid_residual_policy,
+    )
     if bundle.manifest_sha256 != checkpoint["manifest_sha256"]:
         raise ValueError("Evaluation manifest identity differs from checkpoint.")
     if bundle.source_commit != checkpoint["source_commit"]:
@@ -243,6 +251,12 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--classification-threshold", type=float)
+    parser.add_argument("--runtime-path-manifest")
+    parser.add_argument(
+        "--no-valid-residual-policy",
+        choices=("error", "exclude", "keep_empty"),
+        default="error",
+    )
     return parser
 
 
@@ -257,6 +271,8 @@ def main() -> int:
         device=arguments.device,
         num_workers=arguments.num_workers,
         classification_threshold=arguments.classification_threshold,
+        runtime_path_manifest=arguments.runtime_path_manifest,
+        no_valid_residual_policy=arguments.no_valid_residual_policy,
     )
     return 0
 
