@@ -14,6 +14,12 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
+from data.eligibility import (
+    ResidualEligibilityReport,
+    inspect_residual_eligibility,
+    normalize_no_valid_residual_policy,
+    summarize_eligibility,
+)
 from data.leakage import audit_split_leakage
 from data.runtime_paths import relocate_manifest_rows
 
@@ -68,6 +74,8 @@ class TrainingManifestBundle:
     manifest_sha256: str
     manifest_rows: tuple[Mapping[str, str], ...]
     leakage_audit: Mapping[str, Any]
+    eligibility_reports: tuple[ResidualEligibilityReport, ...] = ()
+    eligibility_summary: Mapping[str, Any] | None = None
     runtime_path_manifest: str | None = None
 
     @property
@@ -177,6 +185,7 @@ def _sequence_from_payload(
     source_video_id: str,
     group_id: str,
     residual_sequence_path: Path,
+    allow_empty: bool = False,
 ) -> ResidualSequence:
     clips = list(payload.get("clips", ()))
     if not clips:
@@ -214,7 +223,7 @@ def _sequence_from_payload(
                 confidence[time_index, residual_index] = float(
                     np.mean([float(row["confidence"]) for row in rows])
                 )
-    if not np.any(availability):
+    if not np.any(availability) and not allow_empty:
         raise ValueError(f"{sample_id}: training video has no valid residual.")
     if np.any(~np.isfinite(residuals[availability])):
         raise ValueError(f"{sample_id}: a model-valid position contains NaN or Inf.")
@@ -268,8 +277,10 @@ def build_manifest_samples(
     *,
     runtime_path_manifest: str | Path | None = None,
     leakage_check: Mapping[str, Any] | None = None,
+    load_splits: Sequence[str] = SPLITS,
+    no_valid_residual_policy: str = "error",
 ) -> TrainingManifestBundle:
-    """Load frozen results without provider construction or random splitting."""
+    """Collect eligibility for all rows and load only requested formal splits."""
 
     resolved_manifest = Path(manifest_path).resolve()
     provenance_rows = _read_training_manifest(resolved_manifest)
@@ -284,8 +295,16 @@ def build_manifest_samples(
         schema = validate_channel_schema(channel_schema_path)
     else:
         schema = load_channel_schema(channel_schema_path)
+    selected_splits = tuple(dict.fromkeys(str(split) for split in load_splits))
+    unsupported = sorted(set(selected_splits) - set(SPLITS))
+    if unsupported:
+        raise ValueError(f"Unsupported load_splits: {unsupported}.")
+    no_valid_policy = normalize_no_valid_residual_policy(
+        no_valid_residual_policy
+    )
     output: dict[str, list[ResidualSequence]] = {split: [] for split in SPLITS}
     leakage_records: list[dict[str, Any]] = []
+    eligibility_reports: list[ResidualEligibilityReport] = []
     sample_splits: dict[str, set[str]] = {}
     source_commits: set[str] = set()
     config_hashes: set[str] = set()
@@ -307,38 +326,63 @@ def build_manifest_samples(
         if label not in {0, 1}:
             raise ValueError("Training labels must be 0 or 1.")
         residual_path = Path(row["residual_sequence_path"]).expanduser().resolve()
-        if not residual_path.is_file():
-            raise FileNotFoundError(f"{sample_id}: residual sequence is missing.")
-        payload = json.loads(residual_path.read_text(encoding="utf-8"))
+        inspection = inspect_residual_eligibility(
+            sample_id=sample_id,
+            split=split,
+            label=label,
+            residual_path=residual_path,
+            channel_names=RESIDUAL_NAMES,
+        )
+        eligibility_reports.append(inspection.report)
+        payload = inspection.payload
         source_video_raw = row.get("source_video_path", "").strip()
+        source_video: Path | None = None
         if source_video_raw:
             source_video = Path(source_video_raw).expanduser().resolve()
             if not source_video.is_file():
                 raise FileNotFoundError(f"{sample_id}: optional source video is missing.")
-            payload_video = str(payload.get("video_path", "")).strip()
+            payload_video = (
+                str(payload.get("video_path", "")).strip()
+                if payload is not None
+                else ""
+            )
             if (
                 payload_video
                 and row.get("_runtime_relocated") != "true"
                 and Path(payload_video).resolve() != source_video
             ):
                 raise ValueError(f"{sample_id}: result video path does not match manifest.")
-        metadata = payload.get("metadata", {})
-        if bool(metadata.get("authenticity_label_used", False)):
-            raise ValueError(f"{sample_id}: inference output reports label use.")
-        if bool(metadata.get("historical_csv_read", False)):
-            raise ValueError(f"{sample_id}: historical CSV input is forbidden.")
-        if bool(metadata.get("m6_to_a2_bridge_called", False)):
-            raise ValueError(f"{sample_id}: M6-to-A2 bridge input is forbidden.")
-        sequence = _sequence_from_payload(
-            payload,
-            label=label,
-            sample_id=sample_id,
-            dataset_name=dataset_name,
-            source_video_id=source_video_id,
-            group_id=group_id,
-            residual_sequence_path=residual_path,
+        if payload is not None:
+            metadata = payload.get("metadata", {})
+            if bool(metadata.get("authenticity_label_used", False)):
+                raise ValueError(f"{sample_id}: inference output reports label use.")
+            if bool(metadata.get("historical_csv_read", False)):
+                raise ValueError(f"{sample_id}: historical CSV input is forbidden.")
+            if bool(metadata.get("m6_to_a2_bridge_called", False)):
+                raise ValueError(f"{sample_id}: M6-to-A2 bridge input is forbidden.")
+        should_load = split in selected_splits and (
+            inspection.report.model_eligible
+            or (
+                inspection.report.eligibility_status == "no_valid_residual"
+                and no_valid_policy == "keep_empty"
+            )
         )
-        output[split].append(sequence)
+        if should_load and payload is not None:
+            output[split].append(
+                _sequence_from_payload(
+                    payload,
+                    label=label,
+                    sample_id=sample_id,
+                    dataset_name=dataset_name,
+                    source_video_id=source_video_id,
+                    group_id=group_id,
+                    residual_sequence_path=residual_path,
+                    allow_empty=(
+                        inspection.report.eligibility_status
+                        == "no_valid_residual"
+                    ),
+                )
+            )
         source_commit = row.get("source_commit", "").strip()
         source_config = (
             row.get("source_config_sha256") or row.get("config_sha256") or ""
@@ -351,12 +395,16 @@ def build_manifest_samples(
             {
                 "split": split,
                 "sample_id": sample_id,
-                "clip_ids": sequence.clip_ids,
+                "clip_ids": inspection.clip_ids,
                 "dataset_name": dataset_name,
                 "source_video_id": source_video_id,
                 "group_id": group_id,
                 "source_video_sha256": row.get("source_video_sha256", "").strip(),
-                "source_video_path": str(source_video) if source_video_raw else "",
+                "source_video_path": (
+                    str(source_video)
+                    if source_video is not None
+                    else ""
+                ),
                 "residual_sequence_path": str(residual_path),
             }
         )
@@ -367,7 +415,37 @@ def build_manifest_samples(
     if config_hashes and config_hashes != {expected_config}:
         raise ValueError("Manifest and channel schema config identities differ.")
     leakage_audit = audit_split_leakage(leakage_records, leakage_check)
-    if not output["train"] or not output["validation"]:
+    fatal_reports = [
+        report
+        for report in eligibility_reports
+        if report.eligibility_status
+        in {"missing_file", "malformed", "schema_error"}
+    ]
+    if fatal_reports:
+        examples = ", ".join(
+            f"{report.sample_id}:{report.exclusion_reason}"
+            for report in fatal_reports[:5]
+        )
+        raise ValueError(
+            f"Residual eligibility audit found {len(fatal_reports)} fatal "
+            f"sample(s): {examples}."
+        )
+    no_valid_reports = [
+        report
+        for report in eligibility_reports
+        if report.eligibility_status == "no_valid_residual"
+    ]
+    if no_valid_reports and no_valid_policy == "error":
+        examples = ", ".join(report.sample_id for report in no_valid_reports[:5])
+        raise ValueError(
+            f"Residual eligibility audit found {len(no_valid_reports)} "
+            f"no_valid_residual sample(s): {examples}."
+        )
+    if (
+        "train" in selected_splits
+        and "validation" in selected_splits
+        and (not output["train"] or not output["validation"])
+    ):
         raise ValueError("Manifest requires non-empty train and validation splits.")
     manifest_sha256 = hashlib.sha256(resolved_manifest.read_bytes()).hexdigest()
     return TrainingManifestBundle(
@@ -383,6 +461,8 @@ def build_manifest_samples(
         manifest_sha256=manifest_sha256,
         manifest_rows=tuple(dict(row) for row in rows),
         leakage_audit=leakage_audit,
+        eligibility_reports=tuple(eligibility_reports),
+        eligibility_summary=summarize_eligibility(eligibility_reports),
         runtime_path_manifest=(
             str(Path(runtime_path_manifest).resolve())
             if runtime_path_manifest is not None

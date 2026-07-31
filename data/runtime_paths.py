@@ -49,8 +49,6 @@ def relocate_manifest_rows(
             raise ValueError(f"{sample_id}: missing from runtime path manifest.")
         residual_path = Path(runtime["local_result_json"]).expanduser().resolve()
         video_path = Path(runtime["local_video_path"]).expanduser().resolve()
-        if not residual_path.is_file():
-            raise FileNotFoundError(f"{sample_id}: runtime residual sequence is missing.")
         if not video_path.is_file():
             raise FileNotFoundError(f"{sample_id}: runtime source video is missing.")
         expected_residual_hash = row.get("residual_sha256", "").strip()

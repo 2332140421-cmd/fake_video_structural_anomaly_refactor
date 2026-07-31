@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import random
+import sys
 import time
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -99,6 +100,10 @@ def _run_epoch(
     total_epochs: int,
     global_step: int,
     log_every: int,
+    progress_enabled: bool = True,
+    progress_update_interval: int = 1,
+    progress_log_interval: int = 20,
+    phase_name: str | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], int]:
     training = optimizer is not None
     model.train(training)
@@ -109,15 +114,20 @@ def _run_epoch(
     sample_ids: list[str] = []
     batch_rows: list[dict[str, Any]] = []
     samples_seen = 0
-    for batch_index, (
-        residuals,
-        availability,
-        confidence,
-        padding_mask,
-        target,
-        batch_sample_ids,
-    ) in enumerate(loader, start=1):
-        started = time.perf_counter()
+    iterator = iter(loader)
+    interactive_progress = progress_enabled and sys.stdout.isatty()
+    for batch_index in range(1, len(loader) + 1):
+        data_started = time.perf_counter()
+        (
+            residuals,
+            availability,
+            confidence,
+            padding_mask,
+            target,
+            batch_sample_ids,
+        ) = next(iterator)
+        data_seconds = time.perf_counter() - data_started
+        step_started = time.perf_counter()
         residuals = residuals.to(device)
         availability = availability.to(device)
         confidence = confidence.to(device)
@@ -145,7 +155,7 @@ def _run_epoch(
                 global_step += 1
         if device.type == "cuda":
             torch.cuda.synchronize(device)
-        batch_seconds = time.perf_counter() - started
+        step_seconds = time.perf_counter() - step_started
         batch_size = len(batch_sample_ids)
         samples_seen += batch_size
         weighted_loss += float(loss.detach().cpu()) * batch_size
@@ -157,7 +167,11 @@ def _run_epoch(
         real_count = torch.count_nonzero(real_positions).item()
         allocated, reserved = _gpu_memory(device)
         row = {
-            "phase": "train" if training else "validation",
+            "phase": (
+                str(phase_name).lower()
+                if phase_name
+                else ("train" if training else "validation")
+            ),
             "epoch": epoch,
             "total_epochs": total_epochs,
             "batch": batch_index,
@@ -170,36 +184,51 @@ def _run_epoch(
                 optimizer.param_groups[0]["lr"] if optimizer is not None else None
             ),
             "availability_rate": available_count / max(real_count, 1),
-            "batch_time_seconds": batch_seconds,
-            "samples_per_second": batch_size / max(batch_seconds, 1e-12),
+            "data_time_seconds": data_seconds,
+            "step_time_seconds": step_seconds,
+            "batch_time_seconds": step_seconds,
+            "samples_per_second": batch_size / max(step_seconds, 1e-12),
             "gpu_memory_allocated_mb": allocated,
             "gpu_memory_reserved_mb": reserved,
+            "gpu_peak_memory_mb": (
+                torch.cuda.max_memory_allocated(device) / 1024**2
+                if device.type == "cuda"
+                else 0.0
+            ),
             "global_step": global_step,
         }
         batch_rows.append(row)
-        if training and (batch_index % log_every == 0 or batch_index == len(loader)):
-            print(
-                f"[TRAIN] epoch={epoch}/{total_epochs} "
-                f"batch={batch_index}/{len(loader)} "
-                f"samples={samples_seen}/{len(loader.dataset)}"
-            )
-            print(
-                f"loss={row['batch_loss']:.6f} "
-                f"running_loss={row['running_loss']:.6f}"
-            )
-            print(
-                f"lr={row['learning_rate']:.6e} "
-                f"available={row['availability_rate']:.4f}"
-            )
-            print(
-                f"batch_time={batch_seconds:.3f}s "
-                f"speed={row['samples_per_second']:.2f}samples/s"
-            )
-            print(
-                f"gpu_allocated={allocated:.1f}MiB "
-                f"gpu_reserved={reserved:.1f}MiB",
-                flush=True,
-            )
+        phase = phase_name or ("Train" if training else "Validation")
+        learning_rate_text = (
+            f"{row['learning_rate']:.3e}"
+            if row["learning_rate"] is not None
+            else "n/a"
+        )
+        progress_line = (
+            f"[{phase}] epoch={epoch}/{total_epochs} "
+            f"batch={batch_index}/{len(loader)} "
+            f"loss={row['batch_loss']:.6f} "
+            f"avg_loss={row['running_loss']:.6f} "
+            f"lr={learning_rate_text} "
+            f"data={data_seconds:.3f}s step={step_seconds:.3f}s "
+            f"gpu_peak={row['gpu_peak_memory_mb']:.1f}MiB"
+        )
+        if interactive_progress and (
+            batch_index % max(progress_update_interval, 1) == 0
+            or batch_index == len(loader)
+        ):
+            print(f"\r{progress_line}", end="", flush=True)
+        elif progress_enabled and (
+            batch_index % max(progress_log_interval, 1) == 0
+            or batch_index == len(loader)
+        ):
+            print(progress_line, flush=True)
+        elif not progress_enabled and training and (
+            batch_index % log_every == 0 or batch_index == len(loader)
+        ):
+            print(progress_line, flush=True)
+    if interactive_progress:
+        print()
     metrics = binary_classification_metrics(
         labels,
         logits,
@@ -355,10 +384,13 @@ def train_residual_head(
     log_every: int = 1,
     checkpoint_every: int = 1,
     classification_threshold: float = 0.5,
+    progress_enabled: bool = True,
+    progress_update_interval: int = 1,
+    progress_log_interval: int = 20,
     bundle: TrainingManifestBundle | None = None,
 ) -> tuple[ResidualTemporalHead, list[dict[str, Any]]]:
-    if not 3 <= epochs <= 5:
-        raise ValueError("Paper-core training is intentionally limited to 3-5 epochs.")
+    if not 1 <= epochs <= 5:
+        raise ValueError("Training is intentionally limited to 1-5 epochs.")
     if log_every < 1 or checkpoint_every < 1:
         raise ValueError("log_every and checkpoint_every must be positive.")
     schema = validate_channel_schema(channel_schema)
@@ -400,6 +432,11 @@ def train_residual_head(
         "amp": bool(amp),
         "device": device,
         "classification_threshold": classification_threshold,
+        "progress": {
+            "enabled": bool(progress_enabled),
+            "update_interval": int(progress_update_interval),
+            "log_interval": int(progress_log_interval),
+        },
     }
     model = ResidualTemporalHead(residual_count, hidden_size=hidden_size)
     if model.parameter_count >= 100_000:
@@ -498,6 +535,10 @@ def train_residual_head(
     final_validation: dict[str, Any] = {}
     invocation_started = time.perf_counter()
     peak_overall = 0.0
+    forward_count = 0
+    backward_count = 0
+    nonfinite_loss_count = 0
+    data_loading_seconds = 0.0
     for epoch in range(start_epoch + 1, epochs + 1):
         if torch_device.type == "cuda":
             torch.cuda.reset_peak_memory_stats(torch_device)
@@ -515,8 +556,12 @@ def train_residual_head(
             total_epochs=epochs,
             global_step=global_step,
             log_every=log_every,
+            progress_enabled=progress_enabled,
+            progress_update_interval=progress_update_interval,
+            progress_log_interval=progress_log_interval,
+            phase_name="Train",
         )
-        train_metrics, _, global_step = _run_epoch(
+        train_metrics, train_evaluation_batches, global_step = _run_epoch(
             model,
             train_evaluation_loader,
             optimizer=None,
@@ -528,6 +573,10 @@ def train_residual_head(
             total_epochs=epochs,
             global_step=global_step,
             log_every=log_every,
+            progress_enabled=progress_enabled,
+            progress_update_interval=progress_update_interval,
+            progress_log_interval=progress_log_interval,
+            phase_name="TrainEval",
         )
         validation_metrics, validation_batches, global_step = _run_epoch(
             model,
@@ -541,6 +590,10 @@ def train_residual_head(
             total_epochs=epochs,
             global_step=global_step,
             log_every=log_every,
+            progress_enabled=progress_enabled,
+            progress_update_interval=progress_update_interval,
+            progress_log_interval=progress_log_interval,
+            phase_name="Validation",
         )
         if torch_device.type == "cuda":
             torch.cuda.synchronize(torch_device)
@@ -549,6 +602,23 @@ def train_residual_head(
             peak_memory = 0.0
         peak_overall = max(peak_overall, peak_memory)
         runtime = time.perf_counter() - started
+        epoch_rows = (
+            train_batches + train_evaluation_batches + validation_batches
+        )
+        epoch_data_loading_seconds = sum(
+            float(row["data_time_seconds"]) for row in epoch_rows
+        )
+        epoch_nonfinite_loss_count = sum(
+            not math.isfinite(float(row["batch_loss"])) for row in epoch_rows
+        )
+        epoch_forward_count = len(epoch_rows)
+        epoch_backward_count = len(train_batches)
+        data_loading_seconds += epoch_data_loading_seconds
+        nonfinite_loss_count += epoch_nonfinite_loss_count
+        forward_count += epoch_forward_count
+        backward_count += epoch_backward_count
+        if epoch_nonfinite_loss_count:
+            raise ValueError("Training or validation loss contains NaN or Inf.")
         current_best = min(best_loss, float(validation_metrics["loss"]))
         state = _checkpoint_state(
             model=model,
@@ -583,6 +653,11 @@ def train_residual_head(
             "peak_gpu_memory_mb": peak_memory,
             "checkpoint_path": str(checkpoint_path.resolve()),
             "global_step": global_step,
+            "forward_count": epoch_forward_count,
+            "backward_count": epoch_backward_count,
+            "optimizer_step_count": len(train_batches),
+            "nan_inf_loss_count": epoch_nonfinite_loss_count,
+            "data_loading_seconds": epoch_data_loading_seconds,
         }
         for prefix, metrics in (
             ("train", train_metrics),
@@ -605,6 +680,7 @@ def train_residual_head(
                 record[f"{prefix}_{name}"] = metrics[name]
         history.append(record)
         batch_history.extend(train_batches)
+        batch_history.extend(train_evaluation_batches)
         batch_history.extend(validation_batches)
         final_train = train_metrics
         final_validation = validation_metrics
@@ -689,6 +765,19 @@ def train_residual_head(
             "parameter_count": model.parameter_count,
         },
     )
+    write_json(
+        output / "efficiency" / "execution_summary.json",
+        {
+            "forward_count": forward_count,
+            "backward_count": backward_count,
+            "optimizer_step_count": global_step,
+            "nan_inf_loss_count": nonfinite_loss_count,
+            "data_loading_seconds": data_loading_seconds,
+            "train_batch_count": len(train_loader),
+            "train_evaluation_batch_count": len(train_evaluation_loader),
+            "validation_batch_count": len(validation_loader),
+        },
+    )
     summary = {
         "status": "engineering_smoke_only",
         "performance_conclusion_allowed": False,
@@ -706,6 +795,12 @@ def train_residual_head(
         "train_statistics": sequence_statistics(train_samples),
         "validation_statistics": sequence_statistics(validation_samples),
         "history": history,
+        "execution_counts": {
+            "forward": forward_count,
+            "backward": backward_count,
+            "optimizer_step": global_step,
+            "nan_inf_loss": nonfinite_loss_count,
+        },
         "final_train_logits": final_train["logits"],
         "final_validation_logits": final_validation["logits"],
     }

@@ -90,7 +90,7 @@ def _parser() -> argparse.ArgumentParser:
         help="read-only server path mapping; frozen provenance is not rewritten",
     )
     train.add_argument("--config", default="configs/training_default.yaml")
-    train.add_argument("--epochs", type=int, default=3, choices=(3, 4, 5))
+    train.add_argument("--epochs", type=int, default=3, choices=(1, 2, 3, 4, 5))
     train.add_argument("--output", required=True)
     train.add_argument("--channel-schema")
     train.add_argument("--batch-size", type=int)
@@ -142,6 +142,19 @@ def _print_data_preflight(bundle) -> None:
         if count == 0:
             raise ValueError(f"Training gate failed: no valid {name} evidence.")
     print(f"[DATA] channel_names={list(RESIDUAL_NAMES)}")
+    eligibility = bundle.eligibility_summary or {}
+    for split, summary in eligibility.get("splits", {}).items():
+        print(
+            f"[ELIGIBILITY] split={split} "
+            f"original={summary['original_count']} "
+            f"eligible={summary['eligible_count']} "
+            f"excluded={summary['excluded_count']} "
+            f"coverage={summary['coverage']:.6f}"
+        )
+    print(
+        "[ELIGIBILITY] status_counts="
+        f"{eligibility.get('status_counts', {})}"
+    )
     audit = bundle.leakage_audit
     print(
         "[DATA] leakage_check="
@@ -177,6 +190,10 @@ def main() -> int:
         arguments.channel_schema,
         runtime_path_manifest=arguments.runtime_path_manifest,
         leakage_check=config.get("leakage_check"),
+        load_splits=("train", "validation"),
+        no_valid_residual_policy=config.get("data", {}).get(
+            "no_valid_residual_policy", "error"
+        ),
     )
     training = config["training"]
     data = config["data"]
@@ -196,6 +213,7 @@ def main() -> int:
         "checkpoint_every": int(training["checkpoint_every"]),
         "amp": bool(training["amp"] if arguments.amp is None else arguments.amp),
         "device": str(_training_value(arguments, training, "device")),
+        "progress": dict(training.get("progress", {})),
     }
     threshold = float(
         data["classification_threshold"]
@@ -208,6 +226,12 @@ def main() -> int:
         "model": model,
         "metrics": config["metrics"],
         "leakage_check": config.get("leakage_check", {}),
+        "eligibility": {
+            "no_valid_residual_policy": data.get(
+                "no_valid_residual_policy", "error"
+            ),
+            "loaded_splits": ["train", "validation"],
+        },
         "source_config_path": str(config_path),
         "resume": str(Path(arguments.resume).resolve()) if arguments.resume else None,
     }
@@ -244,6 +268,15 @@ def main() -> int:
         log_every=final_training["log_every"],
         checkpoint_every=final_training["checkpoint_every"],
         classification_threshold=threshold,
+        progress_enabled=bool(
+            training.get("progress", {}).get("enabled", True)
+        ),
+        progress_update_interval=int(
+            training.get("progress", {}).get("update_interval", 1)
+        ),
+        progress_log_interval=int(
+            training.get("progress", {}).get("log_interval", 20)
+        ),
         bundle=bundle,
     )
     return 0

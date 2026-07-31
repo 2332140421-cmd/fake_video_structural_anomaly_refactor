@@ -1,5 +1,6 @@
 data:
   classification_threshold: 0.5
+  no_valid_residual_policy: exclude
 
 # Paper runs fail closed on global sample/clip and source identity overlap.
 leakage_check:
@@ -18,6 +19,10 @@ training:
   checkpoint_every: 1
   amp: true
   device: cuda
+  progress:
+    enabled: true
+    update_interval: 1
+    log_interval: 20
 
 model:
   hidden_size: 32
